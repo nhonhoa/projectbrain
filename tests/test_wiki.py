@@ -274,3 +274,129 @@ def test_command_lint_exit_codes(tmp_path, capsys):
     config = make_config(tmp_path)
     write_page(tmp_path)
     assert wiki._lint_command(args, config) == 1
+
+
+def alpha_drifted(config):
+    hits = wiki.pages_covering(config, ["mod.py"])
+    return drifted(config), hits[0]["drift"]
+
+
+def edit_uncommitted(tmp_path, old, new):
+    source = (tmp_path / "mod.py").read_text().replace(old, new)
+    (tmp_path / "mod.py").write_text(source, encoding="utf-8")
+
+
+def test_confirm_clears_drift_for_uncommitted_code(tmp_path):
+    config = drift_repo(tmp_path, ["mod.py::alpha"])
+    edit_uncommitted(tmp_path, "return 1", "return 11")
+    lint, covering = alpha_drifted(config)
+    assert len(lint) == 1 and len(covering) == 1
+    assert wiki.confirm(config, ["invoice.md"], today=date(2026, 1, 9)) == ["invoice.md"]
+    assert alpha_drifted(config) == ([], [])
+    edit_uncommitted(tmp_path, "return 11", "return 12")
+    lint, covering = alpha_drifted(config)
+    assert len(lint) == 1 and len(covering) == 1
+
+
+def test_confirmed_page_ignores_other_function_edits(tmp_path):
+    config = drift_repo(tmp_path, ["mod.py::alpha"])
+    edit_uncommitted(tmp_path, "return 1", "return 11")
+    wiki.confirm(config, ["invoice.md"], today=date(2026, 1, 9))
+    edit_uncommitted(tmp_path, "return 2", "return 22")
+    assert alpha_drifted(config) == ([], [])
+
+
+def test_confirmed_then_committed_next_day_is_not_drift(tmp_path):
+    config = drift_repo(tmp_path, ["mod.py::alpha"])
+    edit_uncommitted(tmp_path, "return 1", "return 11")
+    wiki.confirm(config, ["invoice.md"], today=date(2026, 1, 9))
+    commit_all(tmp_path, "2026-01-10T10:00:00")
+    findings, _ = wiki.lint_wiki(config, today=date(2026, 1, 10))
+    assert [m for m in messages(findings, "WARNING") if m.startswith("DRIFT")] == []
+    assert wiki.pages_covering(config, ["mod.py"])[0]["drift"] == []
+
+
+def test_stale_verified_hash_without_git_drift_gets_generic_message(tmp_path):
+    config = drift_repo(tmp_path, ["mod.py::alpha"])
+    page = tmp_path / "wiki" / "invoice.md"
+    page.write_text(
+        page.read_text().replace(
+            "verified: 2026-01-05", "verified: 2026-01-05\nverified_hash: 0000"
+        )
+    )
+    lint, covering = alpha_drifted(config)
+    assert lint == ["DRIFT: covered code changed since the page was confirmed"]
+    assert covering == ["covered code changed since the page was confirmed"]
+
+
+def test_confirm_twice_keeps_one_hash_line(tmp_path):
+    config = drift_repo(tmp_path, ["mod.py::alpha"])
+    page = tmp_path / "wiki" / "invoice.md"
+    for day in (8, 9):
+        wiki.confirm(config, ["invoice.md"], today=date(2026, 1, day))
+    text = page.read_text(encoding="utf-8")
+    assert text.count("verified_hash:") == 1
+    assert "verified: 2026-01-09\nverified_hash: " in text
+    assert wiki.parse_front_matter(text)["verified_hash"] == wiki.covers_hash(
+        config, ["mod.py::alpha"]
+    )
+
+
+def test_confirm_crlf_keeps_crlf_and_covers_less_page_gets_no_hash(tmp_path):
+    config = make_config(tmp_path)
+    (tmp_path / "mod.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    page = tmp_path / "wiki" / "crlf.md"
+    page.write_bytes(
+        b"---\r\ntitle: T\r\ncovers:\r\n  - mod.py::f\r\nverified: 2026-01-01\r\n---\r\n"
+    )
+    wiki.confirm(config, ["crlf.md"], today=date(2026, 2, 3))
+    data = page.read_bytes()
+    assert b"verified: 2026-02-03\r\nverified_hash: " in data
+    assert data.count(b"\n") == data.count(b"\r\n")
+    plain = write_page(tmp_path, "plain.md")
+    plain.write_text(
+        plain.read_text().replace("verified: 2026-01-01", "verified: 2026-01-01\nverified_hash: ab")
+    )
+    wiki.confirm(config, ["plain.md"], today=date(2026, 2, 3))
+    assert "verified_hash" not in plain.read_text()
+
+
+def test_covers_hash_depends_on_content_name_and_presence(tmp_path):
+    config = make_config(tmp_path)
+    (tmp_path / "mod.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    base = wiki.covers_hash(config, ["mod.py::f"])
+    assert len(base) == 16
+    assert wiki.covers_hash(config, ["mod.py::f", "nope.py"]) != base
+    assert wiki.covers_hash(config, ["mod.py::g"]) != base
+    (tmp_path / "mod.py").write_text("def f():\n    return 2\n", encoding="utf-8")
+    assert wiki.covers_hash(config, ["mod.py::f"]) != base
+
+
+def test_confirm_accepts_name_forms_and_paths(tmp_path):
+    config = make_config(tmp_path)
+    write_page(tmp_path)
+    page = tmp_path / "wiki" / "invoice.md"
+    forms = ["invoice", "invoice.md", "wiki/invoice.md", "wiki" + chr(92) + "invoice", str(page)]
+    for form in forms:
+        assert wiki.confirm(config, [form], today=date(2026, 3, 1)) == ["invoice.md"]
+    assert wiki.confirm(config, ["nope", "wiki/../invoice.md"], today=date(2026, 3, 1)) == []
+
+
+def test_confirm_command_reports_missing_and_still_confirms_others(tmp_path, capsys):
+    config = make_config(tmp_path)
+    write_page(tmp_path)
+    args = type("Args", (), {"pages": ["ghost", "invoice"]})()
+    assert wiki._confirm_command(args, config) == 1
+    out = capsys.readouterr().out
+    assert "not found: ghost" in out and "confirmed invoice.md" in out
+    assert "verified: " + date.today().isoformat() in (tmp_path / "wiki" / "invoice.md").read_text()
+
+
+def test_verified_hash_is_not_a_lint_problem(tmp_path):
+    config = make_config(tmp_path)
+    (tmp_path / "mod.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    write_page(tmp_path, covers=["mod.py::f"])
+    write_index(tmp_path, "invoice.md")
+    wiki.confirm(config, ["invoice.md"], today=date(2026, 1, 2))
+    findings, _ = wiki.lint_wiki(config, today=date(2026, 1, 3))
+    assert findings == []

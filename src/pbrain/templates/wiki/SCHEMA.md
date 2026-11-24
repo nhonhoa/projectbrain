@@ -27,6 +27,7 @@ covers:              # code this page describes, by function: `file.py::name` or
 sources:             # raw sources ingested: a path from the repo root, a URL, or an id (commit hash, lesson id)
   - docs/specs/billing.md
 verified: 2026-01-15 # last date the page was checked against the code
+verified_hash: 0123456789abcdef # written by `pbrain wiki confirm`; do not edit by hand
 superseded_by:       # only when status = superseded: file name of the replacing page
 ---
 ```
@@ -35,7 +36,9 @@ superseded_by:       # only when status = superseded: file name of the replacing
 Declare a whole file (no `::`) only when the page is about the entire file, or the file is not
 Python (template, script, short config). Lint takes the last commit up to the end of the `verified`
 day as the baseline and compares its content with the current code. After re-checking a page
-against the code, set `verified` to that day (`pbrain wiki confirm <page>`).
+against the code, set `verified` to that day (`pbrain wiki confirm <page>`). Confirming also stores
+`verified_hash`, a fingerprint of the covered code, so a page is not flagged while that code is
+unchanged since the confirmation, committed or not.
 
 A `sources` entry with no `/` and no file extension (a commit hash, a lesson id) is treated as an
 external id and is not checked for existence. `http(s)://` URLs are skipped as well.

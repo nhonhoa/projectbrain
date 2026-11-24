@@ -98,6 +98,8 @@ verified: 2026-01-15
 ```
 
 `covers` names functions, not files, so a page is flagged only when that function changes.
+`pbrain wiki confirm` records a fingerprint of the confirmed code (`verified_hash`), so a
+confirmation holds even when the change is not committed yet.
 `trust` records where a statement comes from: agreed with the user, requested without
 discussion, or inferred from code. Anything read back from code is `inferred`, and is not a
 requirement when the system is rewritten.

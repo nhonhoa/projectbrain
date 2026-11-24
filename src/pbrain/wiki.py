@@ -8,11 +8,15 @@ Drift is measured by content, not by commit date: the last commit up to the end 
 ``verified`` day is the baseline, compared with the file as it is now. A ``covers`` entry such
 as ``src/app/billing.py::Invoice.total`` compares only that function body, so editing another
 function in the same file does not flag the page. An entry without ``::`` compares the whole file.
+
+``wiki confirm`` also stores ``verified_hash``, a fingerprint of the covered code at that moment.
+A page whose fingerprint still matches is not drifted, even if the code is uncommitted.
 """
 
 from __future__ import annotations
 
 import ast
+import hashlib
 import re
 import subprocess
 from datetime import date
@@ -150,6 +154,45 @@ def _as_list(value):
     return value if isinstance(value, list) else [value]
 
 
+def covers_hash(config, covers):
+    """Fingerprint (16 hex chars) of the current content of every ``covers`` entry.
+
+    Each entry contributes its name and its normalized source (function body for
+    ``file.py::symbol``, whole file otherwise); an unreadable entry contributes ``<missing>``.
+    """
+    digest = hashlib.sha256()
+    for cover in sorted(covers):
+        file_path, _, symbol = cover.partition("::")
+        try:
+            content = (config.root / file_path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            content = None
+        if content is not None and symbol and file_path.endswith(".py"):
+            content = symbol_source(content, symbol)
+        text = "<missing>" if content is None else normalized(content)
+        digest.update(f"{cover}\0{text}\0".encode())
+    return digest.hexdigest()[:16]
+
+
+def page_drift(config, git, covers, verified, stored_hash, shown=None):
+    """Drift messages for the ``covers`` entries of one page (only ``shown`` ones if given).
+
+    A page whose ``verified_hash`` equals the current fingerprint is not drifted. Otherwise git
+    describes what changed; a stored hash that no longer matches always yields a message.
+    """
+    if stored_hash and stored_hash == covers_hash(config, covers):
+        return []
+    found = []
+    for cover in covers if shown is None else shown:
+        if (config.root / cover.partition("::")[0]).is_file():
+            changed = drift(git, cover, verified)
+            if changed:
+                found.append(changed)
+    if stored_hash and not found:
+        found.append("covered code changed since the page was confirmed")
+    return found
+
+
 def _is_external_id(source):
     """A source with no ``/`` and no file extension (commit hash, lesson id) is not a path."""
     file_part = source.partition("::")[0]
@@ -198,11 +241,9 @@ def lint_page(config, page, max_age, today, git):
                 errors.append(f"{field}: `{symbol}` not found in `{file_path}`")
 
     if verified and meta.get("status") == "active":
-        for path in covers:
-            if (root / path.partition("::")[0]).is_file():
-                changed = drift(git, path, verified)
-                if changed:
-                    warnings.append(f"DRIFT: {changed}")
+        stored = str(meta.get("verified_hash") or "")
+        for changed in page_drift(config, git, covers, verified.isoformat(), stored):
+            warnings.append(f"DRIFT: {changed}")
         age = (today - verified).days
         if age > max_age:
             warnings.append(f"STALE: not confirmed for {age} days (limit {max_age})")
@@ -283,16 +324,15 @@ def pages_covering(config, paths):
         if not matched:
             continue
         verified = str(meta.get("verified", ""))
-        found = []
         try:
             date.fromisoformat(verified)
         except ValueError:
             verified = ""
-        for cover in matched if verified else []:
-            if (config.root / cover.partition("::")[0]).is_file():
-                changed = drift(git, cover, verified)
-                if changed:
-                    found.append(changed)
+        found = []
+        if verified:
+            stored = str(meta.get("verified_hash") or "")
+            all_covers = _as_list(meta.get("covers"))
+            found = page_drift(config, git, all_covers, verified, stored, shown=matched)
         result.append(
             {
                 "page": page.name,
@@ -305,29 +345,61 @@ def pages_covering(config, paths):
     return result
 
 
+def resolve_page(config, name):
+    """File name of a wiki page given as ``x``, ``x.md`` or a path to it; None if not found."""
+    raw = str(name).strip().replace("\\", "/")
+    if not raw:
+        return None
+    options = [raw] if raw.endswith(".md") else [raw, raw + ".md"]
+    wiki = config.wiki_dir.resolve()
+    for option in options:
+        path = Path(option)
+        if "/" in option:
+            path = path if path.is_absolute() else config.root / path
+        else:
+            path = config.wiki_dir / option
+        if path.is_file() and path.resolve().parent == wiki:
+            return path.name
+    return None
+
+
 def confirm(config, page_names, today=None):
-    """Set ``verified`` to today on the given pages; return the names that were changed."""
+    """Mark pages as verified today and fingerprint their ``covers``; return the file names.
+
+    Sets ``verified`` and writes ``verified_hash`` right after it (dropped when the page has no
+    ``covers``). Names may be given with or without ``.md`` or as a path into the wiki directory.
+    """
     today = (today or date.today()).isoformat()
     changed = []
-    for name in page_names:
-        page = config.wiki_dir / name
-        if not page.is_file():
+    for given in page_names:
+        name = resolve_page(config, given)
+        if name is None:
             continue
+        page = config.wiki_dir / name
         raw = page.read_bytes().decode("utf-8")
         lines = raw.splitlines(keepends=True)
         if not lines or lines[0].strip() != "---":
             continue
-        for number in range(1, len(lines)):
-            if lines[number].strip() == "---":
-                break
+        end = next((n for n in range(1, len(lines)) if lines[n].strip() == "---"), None)
+        if end is None:
+            continue
+        for number in range(1, end):
             match = re.match(
                 r"^(verified:[ \t]*)[^\r\n#]*?([ \t]*(?:#.*)?)(\r?\n?)$", lines[number]
             )
-            if match:
-                lines[number] = f"{match.group(1)}{today}{match.group(2)}{match.group(3)}"
-                page.write_bytes("".join(lines).encode("utf-8"))
-                changed.append(name)
-                break
+            if not match:
+                continue
+            newline = match.group(3) or "\n"
+            lines[number] = f"{match.group(1)}{today}{match.group(2)}{newline}"
+            covers = _as_list((parse_front_matter(raw) or {}).get("covers"))
+            extra = [f"verified_hash: {covers_hash(config, covers)}{newline}"] if covers else []
+            kept = [n for n in range(1, end) if not lines[n].startswith("verified_hash:")]
+            head = [lines[n] for n in kept]
+            at = kept.index(number) + 1
+            lines = [lines[0]] + head[:at] + extra + head[at:] + lines[end:]
+            page.write_bytes("".join(lines).encode("utf-8"))
+            changed.append(name)
+            break
     return changed
 
 
@@ -357,13 +429,12 @@ def _touching_command(args, config):
 
 
 def _confirm_command(args, config):
-    names = [Path(p).name for p in args.pages]
-    done = confirm(config, names)
+    done = confirm(config, args.pages)
     for name in done:
         print(f"confirmed {name}")
-    missing = [n for n in names if n not in done]
+    missing = [p for p in args.pages if resolve_page(config, p) not in done]
     for name in missing:
-        print(f"ERROR  {name}: not found or has no `verified` field")
+        print(f"not found: {name}")
     return 1 if missing else 0
 
 
@@ -379,6 +450,8 @@ def add_parser(subparsers):
     touching.add_argument("files", nargs="+", help="Paths relative to the project root.")
     touching.set_defaults(func=_touching_command)
 
-    confirm_parser = commands.add_parser("confirm", help="Set `verified` to today on pages.")
-    confirm_parser.add_argument("pages", nargs="+", help="Page file names.")
+    confirm_parser = commands.add_parser(
+        "confirm", help="Set `verified` to today and fingerprint the covered code."
+    )
+    confirm_parser.add_argument("pages", nargs="+", help="Page names or paths into the wiki.")
     confirm_parser.set_defaults(func=_confirm_command)
