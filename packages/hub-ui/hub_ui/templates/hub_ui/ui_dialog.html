@@ -1,0 +1,147 @@
+{% comment %}
+Component UIDialog dùng chung — thay thế alert()/confirm() native bằng dialog HTML.
+
+Lý do: dialog native chặn trình duyệt (không automation/AI test được), khó đọc, không
+hiện được nhiều dòng. Component tự vẽ overlay riêng (không dùng Bootstrap Modal JS) nên
+hiện được ĐÈ LÊN modal khác mà không lỗi backdrop. Nhúng MỘT lần trong base template
+({% include "hub_ui/ui_dialog.html" %}) → mọi trang gọi trực tiếp, KHÔNG include lại.
+
+API (đều trả Promise — dùng await trong hàm async):
+  await UIDialog.alert(message, {title?, variant?})            // variant: info|success|warning|danger
+  const ok = await UIDialog.confirm(message, {title?, okText?, cancelText?, variant?})
+  UIDialog.toast(message, variant?)                            // thông báo nhỏ góc phải, tự ẩn 3s
+Message hiện dạng text (tự escape HTML, giữ xuống dòng).
+Selector ổn định cho automation: #ui-dialog, #ui-dialog-message, #ui-dialog-ok, #ui-dialog-cancel.
+{% endcomment %}
+<script>
+window.UIDialog = (function () {
+    const VARIANT_ICON = {
+        info: "bi-info-circle-fill text-primary",
+        success: "bi-check-circle-fill text-success",
+        warning: "bi-exclamation-triangle-fill text-warning",
+        danger: "bi-x-octagon-fill text-danger",
+    };
+    let overlay = null;
+    let pendingResolve = null;
+
+    function build() {
+        if (overlay) return;
+        overlay = document.createElement("div");
+        overlay.id = "ui-dialog";
+        overlay.setAttribute("role", "dialog");
+        overlay.setAttribute("aria-modal", "true");
+        overlay.style.cssText = "position:fixed; inset:0; z-index:4000; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center;";
+        overlay.innerHTML = `
+            <div class="card border-0 shadow-lg" style="width:min(520px, 92vw);">
+                <div class="card-body p-4">
+                    <div class="d-flex align-items-start gap-3">
+                        <i id="ui-dialog-icon" class="bi fs-3"></i>
+                        <div class="flex-grow-1">
+                            <h6 id="ui-dialog-title" class="fw-bold mb-2"></h6>
+                            <div id="ui-dialog-message" style="white-space:pre-wrap; word-break:break-word;"></div>
+                            <input type="text" id="ui-dialog-input" class="form-control form-control-sm mt-3 d-none" autocomplete="off">
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer bg-light border-0 d-flex justify-content-end gap-2 py-2">
+                    <button type="button" id="ui-dialog-cancel" class="btn btn-outline-secondary btn-sm px-3"></button>
+                    <button type="button" id="ui-dialog-ok" class="btn btn-primary btn-sm px-4 fw-bold"></button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        overlay.querySelector("#ui-dialog-ok").addEventListener("click", () => finish(true));
+        overlay.querySelector("#ui-dialog-cancel").addEventListener("click", () => finish(false));
+        // Bootstrap Modal đang mở có focus trap (bắt focusin ở document) kéo focus về modal → ô nhập của
+        // dialog đè lên modal không gõ được. Chặn focusin nổi lên document để giữ focus trong dialog.
+        overlay.addEventListener("focusin", (e) => e.stopPropagation());
+        overlay.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") finish(false);
+            else if (e.key === "Enter") finish(true);
+        });
+    }
+
+    function finish(result) {
+        if (!overlay) return;
+        overlay.style.display = "none";
+        const resolve = pendingResolve;
+        pendingResolve = null;
+        if (resolve) resolve(result);
+    }
+
+    function show(message, opts) {
+        build();
+        const variant = opts.variant || "info";
+        overlay.querySelector("#ui-dialog-icon").className = `bi fs-3 ${VARIANT_ICON[variant] || VARIANT_ICON.info}`;
+        overlay.querySelector("#ui-dialog-title").textContent = opts.title || "";
+        overlay.querySelector("#ui-dialog-message").innerHTML = HubFmt.escapeHtml(message);
+        const ok = overlay.querySelector("#ui-dialog-ok");
+        const cancel = overlay.querySelector("#ui-dialog-cancel");
+        ok.textContent = opts.okText || "OK";
+        ok.className = `btn btn-sm px-4 fw-bold ${variant === "danger" ? "btn-danger" : "btn-primary"}`;
+        cancel.textContent = opts.cancelText || "Hủy";
+        cancel.style.display = opts.showCancel ? "" : "none";
+        const field = overlay.querySelector("#ui-dialog-input");
+        field.classList.toggle("d-none", !opts.input);
+        if (opts.input) {
+            field.placeholder = opts.input.placeholder || "";
+            field.value = opts.input.value || "";
+        }
+        overlay.style.display = "flex";
+        if (opts.input) setTimeout(() => field.focus(), 50); else ok.focus();
+        return new Promise((resolve) => { pendingResolve = resolve; });
+    }
+
+    function alert(message, opts) {
+        opts = opts || {};
+        return show(message, {
+            title: opts.title ?? "Thông báo", variant: opts.variant || "info", showCancel: false,
+        }).then(() => undefined);
+    }
+
+    function confirm(message, opts) {
+        opts = opts || {};
+        return show(message, {
+            title: opts.title ?? "Xác nhận", variant: opts.variant || "warning", showCancel: true,
+            okText: opts.okText || "Đồng ý", cancelText: opts.cancelText || "Hủy",
+        });
+    }
+
+    function prompt(message, opts) {
+        // Hỏi một dòng text (lý do hủy, ghi chú...) — thay window.prompt() native.
+        // Trả chuỗi đã nhập, hoặc null nếu người dùng đóng dialog.
+        opts = opts || {};
+        return show(message, {
+            title: opts.title ?? "Nhập thông tin",
+            variant: opts.variant || "warning",
+            showCancel: true,
+            okText: opts.okText || "Xác nhận",
+            cancelText: opts.cancelText || "Đóng",
+            input: { placeholder: opts.placeholder || "", value: opts.value || "" },
+        }).then((ok) => {
+            const value = (overlay.querySelector("#ui-dialog-input").value || "").trim();
+            if (!ok) return null;
+            // Bắt buộc nhập (mặc định) mà bỏ trống thì hỏi lại thay vì trả rỗng.
+            if (opts.required !== false && !value) return prompt(message, opts);
+            return value;
+        });
+    }
+
+    function toast(message, variant) {
+        let wrap = document.getElementById("ui-toast-wrap");
+        if (!wrap) {
+            wrap = document.createElement("div");
+            wrap.id = "ui-toast-wrap";
+            wrap.style.cssText = "position:fixed; right:16px; bottom:16px; z-index:4100; display:flex; flex-direction:column; gap:8px;";
+            document.body.appendChild(wrap);
+        }
+        const el = document.createElement("div");
+        el.className = `alert alert-${variant || "success"} shadow-sm py-2 px-3 mb-0 small ui-toast`;
+        el.setAttribute("role", "status");
+        el.textContent = message;
+        wrap.appendChild(el);
+        setTimeout(() => el.remove(), 3000);
+    }
+
+    return { alert, confirm, prompt, toast };
+})();
+</script>

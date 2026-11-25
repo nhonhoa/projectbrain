@@ -1,0 +1,49 @@
+{% comment %}
+Component dùng chung: phân trang Django Paginator, giữ nguyên các tham số lọc trên URL.
+  {% include "hub_ui/pagination.html" with page_obj=page_obj %}
+Không cần {% load %} ở trang gọi — component tự load. Tham số: page_obj (bắt buộc),
+pg_param (tên query param trang, mặc định "page").
+Chọn số dòng/trang (tùy chọn): pg_sizes=<list số, vd (50, 100, 300)> + pg_size_param (mặc định "per_page");
+view đọc param đó để dựng Paginator. Đổi giá trị = về trang 1 (hub-ui.js, select[data-hub-page-size]).
+Ô chọn số dòng là <select data-combobox>: trang cần nạp search-combobox.js để thành ô gõ-tìm.
+{% endcomment %}
+{% load hub_ui %}
+{% if page_obj.paginator.num_pages > 1 or pg_sizes and page_obj.paginator.count > pg_sizes.0 %}
+{% with param=pg_param|default:"page" %}
+<nav class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2 small" aria-label="Phân trang">
+    <span class="text-muted hub-inline-actions">
+        Trang {{ page_obj.number }}/{{ page_obj.paginator.num_pages }} · {{ page_obj.paginator.count }} dòng
+        {% if pg_sizes %}
+        · <label for="pg-size">Hiển thị</label>
+        <select data-combobox id="pg-size" name="{{ pg_size_param|default:'per_page' }}" data-hub-page-size="{{ param }}" class="form-select form-select-sm w-auto">
+            {% for n in pg_sizes %}<option value="{{ n }}"{% if n == page_obj.paginator.per_page %} selected{% endif %}>{{ n }}</option>{% endfor %}
+        </select>
+        <span>dòng/trang</span>
+        {% endif %}
+    </span>
+    <ul class="pagination pagination-sm mb-0">
+        <li class="page-item{% if not page_obj.has_previous %} disabled{% endif %}">
+            <a class="page-link" href="{% if page_obj.has_previous %}?{% query_replace param 1 %}{% else %}#{% endif %}" aria-label="Trang đầu">«</a>
+        </li>
+        <li class="page-item{% if not page_obj.has_previous %} disabled{% endif %}">
+            <a class="page-link" href="{% if page_obj.has_previous %}?{% query_replace param page_obj.previous_page_number %}{% else %}#{% endif %}" aria-label="Trang trước">‹</a>
+        </li>
+        {% for n in page_obj.paginator.get_elided_page_range %}
+            {% if n == page_obj.paginator.ELLIPSIS %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+            {% else %}
+            <li class="page-item{% if n == page_obj.number %} active{% endif %}">
+                <a class="page-link" href="?{% query_replace param n %}">{{ n }}</a>
+            </li>
+            {% endif %}
+        {% endfor %}
+        <li class="page-item{% if not page_obj.has_next %} disabled{% endif %}">
+            <a class="page-link" href="{% if page_obj.has_next %}?{% query_replace param page_obj.next_page_number %}{% else %}#{% endif %}" aria-label="Trang sau">›</a>
+        </li>
+        <li class="page-item{% if not page_obj.has_next %} disabled{% endif %}">
+            <a class="page-link" href="{% if page_obj.has_next %}?{% query_replace param page_obj.paginator.num_pages %}{% else %}#{% endif %}" aria-label="Trang cuối">»</a>
+        </li>
+    </ul>
+</nav>
+{% endwith %}
+{% endif %}

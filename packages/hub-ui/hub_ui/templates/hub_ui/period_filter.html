@@ -1,0 +1,85 @@
+{% comment %}
+Component dùng chung: chọn KỲ báo cáo (thay cho mọi kiểu tự viết select tháng + input năm, type=month...).
+JS ở static/hub_ui/hub-ui.js (HubPeriod) tự khởi tạo, không cần wiring thêm.
+
+Cách dùng (đặt trong vùng ô lọc chính của trang):
+  Tháng/năm (◀ ▶ chuyển tháng):
+    {% include "hub_ui/period_filter.html" with pf_mode="month" pf_month=current_month pf_year=current_year %}
+  Khoảng ngày (preset hôm nay/tuần/tháng/quý/năm/7-30 ngày + N tháng gần nhất):
+    {% include "hub_ui/period_filter.html" with pf_mode="range" pf_from=start pf_to=end pf_name_from="from_date" pf_name_to="to_date" %}
+  Một ngày (◀ ▶ chuyển ngày):
+    {% include "hub_ui/period_filter.html" with pf_mode="day" pf_value=today pf_name="date" %}
+
+Tham số (tuỳ chọn trừ khi ghi chú):
+  pf_mode        month | range | day (mặc định range)
+  pf_label       nhãn (mặc định "Kỳ" / "Khoảng ngày" / "Ngày")
+  pf_id          tiền tố id (mặc định "pf")
+  pf_submit      id <form> sẽ requestSubmit() khi đổi kỳ; hoặc pf_callback = tên hàm JS toàn cục
+  -- month: pf_month, pf_year (giá trị ban đầu), pf_name_month ("month"), pf_name_year ("year"),
+            pf_year_from / pf_year_to (khoảng năm; mặc định năm nay-5 .. năm nay+1)
+  -- range: pf_from, pf_to (yyyy-mm-dd), pf_name_from ("from_date"), pf_name_to ("to_date"), pf_months (12)
+  -- day:   pf_value (yyyy-mm-dd), pf_name ("date")
+Ô ngày hiển thị dd/mm/yy (gõ tay: d/m/yy, dd/mm/yyyy, ddmmyy đều được) + nút lịch; giá trị gửi server và
+đọc từ JS (document.getElementById('<pf_id>_from').value) vẫn là ISO yyyy-mm-dd.
+{% endcomment %}
+{% with pfx=pf_id|default:"pf" mode=pf_mode|default:"range" %}
+{% if mode == "month" %}
+<div class="hub-field hub-period" data-hub-period="month" id="{{ pfx }}"
+     {% if pf_submit %}data-submit="{{ pf_submit }}"{% endif %}{% if pf_callback %} data-callback="{{ pf_callback }}"{% endif %}>
+    <label class="form-label" for="{{ pfx }}_month">{{ pf_label|default:"Kỳ" }}</label>
+    <div class="input-group input-group-sm">
+        <button type="button" class="btn btn-outline-secondary" data-period-prev title="Tháng trước" aria-label="Tháng trước"><i class="bi bi-chevron-left"></i></button>
+        <select id="{{ pfx }}_month" name="{{ pf_name_month|default:'month' }}" class="form-select" data-period-month data-value="{{ pf_month }}"></select>
+        <select id="{{ pfx }}_year" name="{{ pf_name_year|default:'year' }}" class="form-select" data-period-year data-value="{{ pf_year }}"
+                {% if pf_year_from %}data-from="{{ pf_year_from }}"{% endif %} {% if pf_year_to %}data-to="{{ pf_year_to }}"{% endif %}></select>
+        <button type="button" class="btn btn-outline-secondary" data-period-next title="Tháng sau" aria-label="Tháng sau"><i class="bi bi-chevron-right"></i></button>
+    </div>
+</div>
+{% elif mode == "day" %}
+<div class="hub-field hub-period" data-hub-period="day" id="{{ pfx }}"
+     {% if pf_submit %}data-submit="{{ pf_submit }}"{% endif %}{% if pf_callback %} data-callback="{{ pf_callback }}"{% endif %}>
+    <label class="form-label" for="{{ pfx }}_date">{{ pf_label|default:"Ngày" }}</label>
+    <div class="input-group input-group-sm">
+        <button type="button" class="btn btn-outline-secondary" data-period-prev title="Ngày trước" aria-label="Ngày trước"><i class="bi bi-chevron-left"></i></button>
+        {# Ô ngày gọn: text dd/mm/yy (HubDate) + hidden ISO mang name gửi server + nút lịch mở picker gốc #}
+        <input type="hidden" id="{{ pfx }}_date" name="{{ pf_name|default:'date' }}" value="{{ pf_value }}" data-period-value>
+        <input type="text" class="form-control hub-date" data-hub-date-for="{{ pfx }}_date" inputmode="numeric"
+               placeholder="dd/mm/yy" autocomplete="off" aria-label="{{ pf_label|default:'Ngày' }}">
+        <button type="button" class="btn btn-outline-secondary hub-date-pick" data-hub-date-pick="{{ pfx }}_date" title="Chọn ngày" aria-label="Chọn ngày"><i class="bi bi-calendar3"></i></button>
+        <button type="button" class="btn btn-outline-secondary" data-period-next title="Ngày sau" aria-label="Ngày sau"><i class="bi bi-chevron-right"></i></button>
+    </div>
+</div>
+{% else %}
+<div class="hub-field hub-period" data-hub-period="range" id="{{ pfx }}" data-months="{{ pf_months|default:12 }}"
+     {% if pf_submit %}data-submit="{{ pf_submit }}"{% endif %}{% if pf_callback %} data-callback="{{ pf_callback }}"{% endif %}>
+    <label class="form-label" for="{{ pfx }}_quick">{{ pf_label|default:"Khoảng ngày" }}</label>
+    <div class="input-group input-group-sm">
+        <select id="{{ pfx }}_quick" class="form-select" data-period-quick aria-label="Chọn nhanh khoảng ngày">
+            <option value="">Chọn nhanh…</option>
+            <option value="today">Hôm nay</option>
+            <option value="yesterday">Hôm qua</option>
+            <option value="last7">7 ngày qua</option>
+            <option value="last30">30 ngày qua</option>
+            <option value="this_week">Tuần này</option>
+            <option value="last_week">Tuần trước</option>
+            <option value="this_month">Tháng này</option>
+            <option value="last_month">Tháng trước</option>
+            <option value="this_quarter">Quý này</option>
+            <option value="last_quarter">Quý trước</option>
+            <option value="this_year">Năm nay</option>
+            <option value="last_year">Năm trước</option>
+        </select>
+        {# Ô ngày gọn: text dd/mm/yy (HubDate) + hidden ISO mang name gửi server + nút lịch mở picker gốc #}
+        <input type="hidden" id="{{ pfx }}_from" name="{{ pf_name_from|default:'from_date' }}" value="{{ pf_from }}" data-period-from>
+        <input type="text" class="form-control hub-date" data-hub-date-for="{{ pfx }}_from" inputmode="numeric"
+               placeholder="dd/mm/yy" autocomplete="off" aria-label="Từ ngày">
+        <button type="button" class="btn btn-outline-secondary hub-date-pick" data-hub-date-pick="{{ pfx }}_from" title="Chọn từ ngày" aria-label="Chọn từ ngày"><i class="bi bi-calendar3"></i></button>
+        <span class="input-group-text px-1">→</span>
+        <input type="hidden" id="{{ pfx }}_to" name="{{ pf_name_to|default:'to_date' }}" value="{{ pf_to }}" data-period-to>
+        <input type="text" class="form-control hub-date" data-hub-date-for="{{ pfx }}_to" inputmode="numeric"
+               placeholder="dd/mm/yy" autocomplete="off" aria-label="Đến ngày">
+        <button type="button" class="btn btn-outline-secondary hub-date-pick" data-hub-date-pick="{{ pfx }}_to" title="Chọn đến ngày" aria-label="Chọn đến ngày"><i class="bi bi-calendar3"></i></button>
+    </div>
+</div>
+{% endif %}
+{% endwith %}

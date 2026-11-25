@@ -1,0 +1,525 @@
+{
+ "cases": [
+  {
+   "value": 0,
+   "decimals": 0,
+   "python": {
+    "vn_number": "0",
+    "format_vnd": "0"
+   },
+   "js": {
+    "number": "0",
+    "vnd": "0"
+   },
+   "agree": true
+  },
+  {
+   "value": 0,
+   "decimals": 2,
+   "python": {
+    "vn_number": "0,00",
+    "format_vnd": "0"
+   },
+   "js": {
+    "number": "0,00",
+    "vnd": "0"
+   },
+   "agree": true
+  },
+  {
+   "value": 1,
+   "decimals": 0,
+   "python": {
+    "vn_number": "1",
+    "format_vnd": "1"
+   },
+   "js": {
+    "number": "1",
+    "vnd": "1"
+   },
+   "agree": true
+  },
+  {
+   "value": -1,
+   "decimals": 0,
+   "python": {
+    "vn_number": "-1",
+    "format_vnd": "-1"
+   },
+   "js": {
+    "number": "-1",
+    "vnd": "-1"
+   },
+   "agree": true
+  },
+  {
+   "value": 12,
+   "decimals": 0,
+   "python": {
+    "vn_number": "12",
+    "format_vnd": "12"
+   },
+   "js": {
+    "number": "12",
+    "vnd": "12"
+   },
+   "agree": true
+  },
+  {
+   "value": 999,
+   "decimals": 0,
+   "python": {
+    "vn_number": "999",
+    "format_vnd": "999"
+   },
+   "js": {
+    "number": "999",
+    "vnd": "999"
+   },
+   "agree": true
+  },
+  {
+   "value": 1000,
+   "decimals": 0,
+   "python": {
+    "vn_number": "1.000",
+    "format_vnd": "1.000"
+   },
+   "js": {
+    "number": "1.000",
+    "vnd": "1.000"
+   },
+   "agree": true
+  },
+  {
+   "value": -1000,
+   "decimals": 0,
+   "python": {
+    "vn_number": "-1.000",
+    "format_vnd": "-1.000"
+   },
+   "js": {
+    "number": "-1.000",
+    "vnd": "-1.000"
+   },
+   "agree": true
+  },
+  {
+   "value": 1234567,
+   "decimals": 0,
+   "python": {
+    "vn_number": "1.234.567",
+    "format_vnd": "1.234.567"
+   },
+   "js": {
+    "number": "1.234.567",
+    "vnd": "1.234.567"
+   },
+   "agree": true
+  },
+  {
+   "value": 1234567.891,
+   "decimals": 2,
+   "python": {
+    "vn_number": "1.234.567,89",
+    "format_vnd": "1.234.568"
+   },
+   "js": {
+    "number": "1.234.567,89",
+    "vnd": "1.234.568"
+   },
+   "agree": true
+  },
+  {
+   "value": 1234567.891,
+   "decimals": 0,
+   "python": {
+    "vn_number": "1.234.568",
+    "format_vnd": "1.234.568"
+   },
+   "js": {
+    "number": "1.234.568",
+    "vnd": "1.234.568"
+   },
+   "agree": true
+  },
+  {
+   "value": -1234567.891,
+   "decimals": 2,
+   "python": {
+    "vn_number": "-1.234.567,89",
+    "format_vnd": "-1.234.568"
+   },
+   "js": {
+    "number": "-1.234.567,89",
+    "vnd": "-1.234.568"
+   },
+   "agree": true
+  },
+  {
+   "value": 1234.5,
+   "decimals": 0,
+   "python": {
+    "vn_number": "1.234",
+    "format_vnd": "1.234"
+   },
+   "js": {
+    "number": "1.235",
+    "vnd": "1.235"
+   },
+   "agree": false
+  },
+  {
+   "value": 1234.5,
+   "decimals": 1,
+   "python": {
+    "vn_number": "1.234,5",
+    "format_vnd": "1.234"
+   },
+   "js": {
+    "number": "1.234,5",
+    "vnd": "1.235"
+   },
+   "agree": false
+  },
+  {
+   "value": 1234.5,
+   "decimals": 3,
+   "python": {
+    "vn_number": "1.234,500",
+    "format_vnd": "1.234"
+   },
+   "js": {
+    "number": "1.234,500",
+    "vnd": "1.235"
+   },
+   "agree": false
+  },
+  {
+   "value": 0.5,
+   "decimals": 0,
+   "python": {
+    "vn_number": "0",
+    "format_vnd": "0"
+   },
+   "js": {
+    "number": "1",
+    "vnd": "1"
+   },
+   "agree": false
+  },
+  {
+   "value": 1.5,
+   "decimals": 0,
+   "python": {
+    "vn_number": "2",
+    "format_vnd": "2"
+   },
+   "js": {
+    "number": "2",
+    "vnd": "2"
+   },
+   "agree": true
+  },
+  {
+   "value": 2.5,
+   "decimals": 0,
+   "python": {
+    "vn_number": "2",
+    "format_vnd": "2"
+   },
+   "js": {
+    "number": "3",
+    "vnd": "3"
+   },
+   "agree": false
+  },
+  {
+   "value": -0.5,
+   "decimals": 0,
+   "python": {
+    "vn_number": "-0",
+    "format_vnd": "-0"
+   },
+   "js": {
+    "number": "-1",
+    "vnd": "-1"
+   },
+   "agree": false
+  },
+  {
+   "value": -2.5,
+   "decimals": 0,
+   "python": {
+    "vn_number": "-2",
+    "format_vnd": "-2"
+   },
+   "js": {
+    "number": "-3",
+    "vnd": "-3"
+   },
+   "agree": false
+  },
+  {
+   "value": 0.005,
+   "decimals": 2,
+   "python": {
+    "vn_number": "0,01",
+    "format_vnd": "0"
+   },
+   "js": {
+    "number": "0,01",
+    "vnd": "0"
+   },
+   "agree": true
+  },
+  {
+   "value": 1.005,
+   "decimals": 2,
+   "python": {
+    "vn_number": "1,00",
+    "format_vnd": "1"
+   },
+   "js": {
+    "number": "1,01",
+    "vnd": "1"
+   },
+   "agree": false
+  },
+  {
+   "value": 2.675,
+   "decimals": 2,
+   "python": {
+    "vn_number": "2,67",
+    "format_vnd": "3"
+   },
+   "js": {
+    "number": "2,68",
+    "vnd": "3"
+   },
+   "agree": false
+  },
+  {
+   "value": 0.1,
+   "decimals": 1,
+   "python": {
+    "vn_number": "0,1",
+    "format_vnd": "0"
+   },
+   "js": {
+    "number": "0,1",
+    "vnd": "0"
+   },
+   "agree": true
+  },
+  {
+   "value": 0.125,
+   "decimals": 2,
+   "python": {
+    "vn_number": "0,12",
+    "format_vnd": "0"
+   },
+   "js": {
+    "number": "0,13",
+    "vnd": "0"
+   },
+   "agree": false
+  },
+  {
+   "value": 1000000000.0,
+   "decimals": 0,
+   "python": {
+    "vn_number": "1.000.000.000",
+    "format_vnd": "1.000.000.000"
+   },
+   "js": {
+    "number": "1.000.000.000",
+    "vnd": "1.000.000.000"
+   },
+   "agree": true
+  },
+  {
+   "value": 123456789012,
+   "decimals": 0,
+   "python": {
+    "vn_number": "123.456.789.012",
+    "format_vnd": "123.456.789.012"
+   },
+   "js": {
+    "number": "123.456.789.012",
+    "vnd": "123.456.789.012"
+   },
+   "agree": true
+  },
+  {
+   "value": 9007199254740991,
+   "decimals": 0,
+   "python": {
+    "vn_number": "9.007.199.254.740.991",
+    "format_vnd": "9.007.199.254.740.991"
+   },
+   "js": {
+    "number": "9.007.199.254.740.991",
+    "vnd": "9.007.199.254.740.991"
+   },
+   "agree": true
+  },
+  {
+   "value": 1234567.89,
+   "decimals": 2,
+   "python": {
+    "vn_number": "1.234.567,89",
+    "format_vnd": "1.234.568"
+   },
+   "js": {
+    "number": "1.234.567,89",
+    "vnd": "1.234.568"
+   },
+   "agree": true
+  },
+  {
+   "value": null,
+   "decimals": 0,
+   "python": {
+    "vn_number": "0",
+    "format_vnd": "0"
+   },
+   "js": {
+    "number": "",
+    "vnd": ""
+   },
+   "agree": false
+  },
+  {
+   "value": null,
+   "decimals": 2,
+   "python": {
+    "vn_number": "0,00",
+    "format_vnd": "0"
+   },
+   "js": {
+    "number": "",
+    "vnd": ""
+   },
+   "agree": false
+  },
+  {
+   "value": "",
+   "decimals": 0,
+   "python": {
+    "vn_number": "",
+    "format_vnd": ""
+   },
+   "js": {
+    "number": "",
+    "vnd": ""
+   },
+   "agree": true
+  },
+  {
+   "value": "",
+   "decimals": 2,
+   "python": {
+    "vn_number": "",
+    "format_vnd": ""
+   },
+   "js": {
+    "number": "",
+    "vnd": ""
+   },
+   "agree": true
+  },
+  {
+   "value": "1234.5",
+   "decimals": 1,
+   "python": {
+    "vn_number": "1.234,5",
+    "format_vnd": "1.234"
+   },
+   "js": {
+    "number": "1.234,5",
+    "vnd": "1.235"
+   },
+   "agree": false
+  },
+  {
+   "value": "abc",
+   "decimals": 0,
+   "python": {
+    "vn_number": "abc",
+    "format_vnd": "abc"
+   },
+   "js": {
+    "number": "abc",
+    "vnd": "abc"
+   },
+   "agree": true
+  },
+  {
+   "value": "-12",
+   "decimals": 0,
+   "python": {
+    "vn_number": "-12",
+    "format_vnd": "-12"
+   },
+   "js": {
+    "number": "-12",
+    "vnd": "-12"
+   },
+   "agree": true
+  },
+  {
+   "value": true,
+   "decimals": 0,
+   "python": {
+    "vn_number": "1",
+    "format_vnd": "1"
+   },
+   "js": {
+    "number": "1",
+    "vnd": "1"
+   },
+   "agree": true
+  },
+  {
+   "value": 0.999,
+   "decimals": 0,
+   "python": {
+    "vn_number": "1",
+    "format_vnd": "1"
+   },
+   "js": {
+    "number": "1",
+    "vnd": "1"
+   },
+   "agree": true
+  },
+  {
+   "value": -0.4,
+   "decimals": 0,
+   "python": {
+    "vn_number": "-0",
+    "format_vnd": "-0"
+   },
+   "js": {
+    "number": "-0",
+    "vnd": "-0"
+   },
+   "agree": true
+  },
+  {
+   "value": 100,
+   "decimals": 3,
+   "python": {
+    "vn_number": "100,000",
+    "format_vnd": "100"
+   },
+   "js": {
+    "number": "100,000",
+    "vnd": "100"
+   },
+   "agree": true
+  }
+ ],
+ "note": "Recorded from the behavior of hub_ui.formatting and HubFmt in hub-ui.js at 0.1.0. Where agree=false the Python and JS sides differ today (half-way rounding, None); both sides are pinned as they are, not fixed."
+}

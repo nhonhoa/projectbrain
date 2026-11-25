@@ -1,0 +1,123 @@
+{% comment %}
+Component dùng chung: Bộ lọc khoảng thời gian (Chọn nhanh + Từ ngày/Đến ngày).
+Tự chứa cả markup lẫn JS, không cần wiring thêm ở trang gọi.
+
+Cách dùng (đặt bên trong một <form class="row g-3">):
+  {% include "hub_ui/date_range_filter.html" with dr_id="xnt" dr_from=start_of_month dr_to=today dr_submit="filterForm" %}
+
+Tham số (tất cả tùy chọn trừ khi ghi chú):
+  dr_id       - tiền tố id cho các input (mặc định "dr").
+                Sinh ra: {dr_id}_quick / {dr_id}_from / {dr_id}_to
+  dr_from     - giá trị "Từ ngày" ban đầu (yyyy-mm-dd)
+  dr_to       - giá trị "Đến ngày" ban đầu (yyyy-mm-dd)
+  dr_submit   - id của <form> sẽ gọi requestSubmit() sau khi đổi ngày (tùy chọn)
+  dr_callback - tên hàm JS toàn cục sẽ gọi sau khi đổi ngày (tùy chọn)
+  dr_months   - số tháng gần đây liệt kê trong combo (mặc định 10)
+  dr_col      - class cột bootstrap cho mỗi ô (mặc định "col-md-2")
+  dr_name_from- thuộc tính name= cho ô Từ ngày (bắt buộc nếu submit form GET server-side)
+  dr_name_to  - thuộc tính name= cho ô Đến ngày (bắt buộc nếu submit form GET server-side)
+  dr_size     - "sm" để dùng control thu gọn (form-*-sm); mặc định cỡ thường
+{% endcomment %}
+{% with col=dr_col|default:"col-md-2" pfx=dr_id|default:"dr" sm=dr_size %}
+<div class="{{ col }}">
+    <label for="{{ pfx }}_quick" class="form-label small fw-bold">Chọn nhanh</label>
+    <select id="{{ pfx }}_quick"
+            class="form-select{% if sm == 'sm' %} form-select-sm{% endif %} js-quick-date border-primary text-primary fw-bold"
+            data-from="{{ pfx }}_from" data-to="{{ pfx }}_to"
+            {% if dr_submit %}data-submit="{{ dr_submit }}"{% endif %}
+            {% if dr_callback %}data-callback="{{ dr_callback }}"{% endif %}
+            data-months="{{ dr_months|default:10 }}">
+        <option value="">-- Khoảng ngày --</option>
+        <option value="today">Hôm nay</option>
+        <option value="yesterday">Hôm qua</option>
+        <option value="this_week">Tuần này</option>
+        <option value="last_week">Tuần trước</option>
+        <option value="this_month">Tháng này</option>
+        <option value="last_month">Tháng trước</option>
+    </select>
+</div>
+<div class="{{ col }}">
+    <label for="{{ pfx }}_from" class="form-label small fw-bold">Từ ngày</label>
+    <input type="date" id="{{ pfx }}_from"{% if dr_name_from %} name="{{ dr_name_from }}"{% endif %} class="form-control{% if sm == 'sm' %} form-control-sm{% endif %}" value="{{ dr_from }}">
+</div>
+<div class="{{ col }}">
+    <label for="{{ pfx }}_to" class="form-label small fw-bold">Đến ngày</label>
+    <input type="date" id="{{ pfx }}_to"{% if dr_name_to %} name="{{ dr_name_to }}"{% endif %} class="form-control{% if sm == 'sm' %} form-control-sm{% endif %}" value="{{ dr_to }}">
+</div>
+{% endwith %}
+
+{% comment %} Script chỉ nạp 1 lần/trang dù include nhiều bộ lọc {% endcomment %}
+<script>
+if (!window.__quickDateInit) {
+    window.__quickDateInit = true;
+
+    // Áp dụng preset cho 1 combo: tính toán & gán Từ ngày/Đến ngày, rồi submit/callback.
+    window.applyQuickDate = function (sel) {
+        var val = sel.value;
+        if (!val) return;
+        var now = new Date();
+        var fromDate, toDate;
+        var fmt = function (d) {
+            var m = '' + (d.getMonth() + 1), day = '' + d.getDate(), y = d.getFullYear();
+            if (m.length < 2) m = '0' + m;
+            if (day.length < 2) day = '0' + day;
+            return [y, m, day].join('-');
+        };
+        if (val === 'today') {
+            fromDate = toDate = new Date();
+        } else if (val === 'yesterday') {
+            fromDate = toDate = new Date(new Date().setDate(now.getDate() - 1));
+        } else if (val === 'this_week') {
+            var dw = now.getDay() || 7;
+            fromDate = new Date(new Date().setDate(now.getDate() - dw + 1));
+            toDate = new Date();
+        } else if (val === 'last_week') {
+            var dw2 = now.getDay() || 7;
+            toDate = new Date(new Date().setDate(now.getDate() - dw2));
+            fromDate = new Date(new Date(toDate).setDate(toDate.getDate() - 6));
+        } else if (val === 'this_month') {
+            fromDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            toDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        } else if (val === 'last_month') {
+            fromDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            toDate = new Date(now.getFullYear(), now.getMonth(), 0);
+        } else if (val.indexOf('month_') === 0) {
+            var p = val.split('_');
+            fromDate = new Date(parseInt(p[1]), parseInt(p[2]) - 1, 1);
+            toDate = new Date(parseInt(p[1]), parseInt(p[2]), 0);
+        }
+        if (!fromDate || !toDate) return;
+
+        var fromEl = document.getElementById(sel.dataset.from);
+        var toEl = document.getElementById(sel.dataset.to);
+        if (fromEl) fromEl.value = fmt(fromDate);
+        if (toEl) toEl.value = fmt(toDate);
+
+        if (sel.dataset.submit) {
+            var form = document.getElementById(sel.dataset.submit);
+            if (form && form.requestSubmit) form.requestSubmit();
+        }
+        if (sel.dataset.callback && typeof window[sel.dataset.callback] === 'function') {
+            window[sel.dataset.callback]();
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('select.js-quick-date').forEach(function (sel) {
+            // Thêm danh sách N tháng gần đây
+            var months = parseInt(sel.dataset.months || '10', 10);
+            var now = new Date();
+            for (var i = 1; i <= months; i++) {
+                var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                var m = (d.getMonth() + 1).toString().padStart(2, '0');
+                var y = d.getFullYear();
+                var opt = document.createElement('option');
+                opt.value = 'month_' + y + '_' + m;
+                opt.textContent = 'Tháng ' + m + '/' + y;
+                sel.appendChild(opt);
+            }
+            sel.addEventListener('change', function () { window.applyQuickDate(sel); });
+        });
+    });
+}
+</script>

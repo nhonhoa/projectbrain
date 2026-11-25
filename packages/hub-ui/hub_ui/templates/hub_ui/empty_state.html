@@ -1,0 +1,11 @@
+{% comment %}
+Component dùng chung: trạng thái rỗng / chưa tra cứu (thay cho alert-info tự vẽ từng trang).
+  {% include "hub_ui/empty_state.html" with es_title="Chưa có dữ liệu" es_text="Chọn kỳ rồi bấm Xem." %}
+Tham số: es_icon (bi-*, mặc định bi-inbox), es_title (bắt buộc), es_text (tuỳ chọn).
+Trong JS dùng HubTable.empty(tbody, colspan, title, text) cho bảng tải bằng fetch.
+{% endcomment %}
+<div class="hub-empty" role="status">
+    <i class="bi {{ es_icon|default:'bi-inbox' }}"></i>
+    <h2>{{ es_title }}</h2>
+    {% if es_text %}<p>{{ es_text }}</p>{% endif %}
+</div>
