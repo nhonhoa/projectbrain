@@ -147,6 +147,7 @@ const I18N = {
     hint_inbox: "A note waiting to be filed. Keep it as a new page, merge it into an existing page, or discard it.",
     hint_drift: "The code this page describes changed after the page was last checked. Confirm if the page is still right, or edit it.",
     hint_lint: "The page breaks a wiki convention. Edit it to fix the finding.",
+    offline: "Cannot reach the review server. Is it still running? Reload the page after restarting it.",
     srcJump: "Go to item no.", srcOpen: "Open the link", srcNone: "This source is not a file of an open project.",
     gone: "The linked item is no longer waiting (already handled).",
     nothing: "Nothing waiting", nothingSub: "No decisions are pending in this project.",
@@ -168,6 +169,7 @@ const I18N = {
     hint_inbox: "Ghi chú đang chờ xếp chỗ. Giữ thành trang mới, gộp vào trang có sẵn, hoặc bỏ.",
     hint_drift: "Code mà trang này mô tả đã đổi sau lần kiểm gần nhất. Trang còn đúng thì Xác nhận, hết đúng thì Sửa.",
     hint_lint: "Trang vi phạm quy ước wiki. Bấm Sửa để chỉnh theo thông báo.",
+    offline: "Không kết nối được máy chủ trang duyệt. Kiểm tra nó còn chạy không, rồi tải lại trang.",
     srcJump: "Tới mục số", srcOpen: "Mở đường dẫn", srcNone: "Nguồn này không phải file của dự án đang mở.",
     gone: "Mục trong đường dẫn không còn chờ nữa (đã xử lý).",
     nothing: "Không còn gì chờ duyệt", nothingSub: "Dự án này không có quyết định nào đang chờ.",
@@ -281,7 +283,7 @@ async function openSource(ref) {
   const close = '<form method="dialog"><button>' + esc(t("close")) + "</button></form>";
   if (!res.ok) {
     $("srcHead").innerHTML = "<b>" + esc(ref) + "</b>" + close;
-    $("srcBody").innerHTML = "<p>" + esc(t("srcNone")) + "</p>" +
+    $("srcBody").innerHTML = "<p>" + esc(res.status === 404 ? t("srcNone") : res.status ? res.message : t("offline")) + "</p>" +
       (res.url ? '<p><a href="' + esc(res.url) + '" target="_blank" rel="noopener noreferrer">' + esc(t("srcOpen")) + "</a></p>" : "");
   } else {
     $("srcHead").innerHTML = "<b>" + esc(res.project + " / " + res.path + (res.symbol ? " :: " + res.symbol : "")) + "</b>" +
