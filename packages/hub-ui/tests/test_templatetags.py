@@ -13,19 +13,22 @@ def test_format_vnd_basic():
     assert format_vnd(1500000) == "1.500.000"
     assert format_vnd(0) == "0"
     assert format_vnd(-1234567) == "-1.234.567"
-    assert format_vnd(None) == "0"
-    assert format_vnd("abc") == "abc"
+    assert format_vnd(None) == ""
+    assert format_vnd("abc") == ""
+    assert format_vnd(2.5) == "3"
+    assert format_vnd(-0.4) == "0"
 
 
 def test_format_number_vn_decimals():
     assert format_number_vn(1234567.891, 2) == "1.234.567,89"
-    assert format_number_vn(None, 2) == "0,00"
+    assert format_number_vn(None, 2) == ""
+    assert format_number_vn(1.005, 2) == "1,01"
 
 
 def test_filters_in_templates():
     assert render("{{ v|format_vnd }}", v=1234567) == "1.234.567"
     assert render("{{ v|vn_number:2 }}", v=1234.5) == "1.234,50"
-    assert render("{{ v|vn_number }}", v=1234.5) == "1.234"
+    assert render("{{ v|vn_number }}", v=1234.5) == "1.235"
     assert render("{{ v|vn_number:'x' }}", v=12) == "12"
 
 

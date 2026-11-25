@@ -49,6 +49,9 @@ CSS: `hub_ui/hub-ui.css`.
 Templates (`hub_ui/...`): `ui_dialog.html` (`UIDialog.alert/confirm/prompt/toast`),
 `empty_state.html`, `pagination.html`, `period_filter.html`, `date_range_filter.html`.
 
+Number rounding (Python and JS alike): half away from zero on the decimal as written (`1.005` -> `1,01`,
+`-2.5` -> `-3`), no `-0`, empty/non-numeric -> `""`.
+
 Template tags (`{% load hub_ui %}`): filters `format_vnd`, `vn_number`; tag `query_replace`.
 
 ## Versioning

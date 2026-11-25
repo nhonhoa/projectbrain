@@ -27,5 +27,6 @@ const cases = JSON.parse(fs.readFileSync(0, "utf8"));
 const out = cases.map((c) => ({
     number: sandbox.HubFmt.number(c.value, c.decimals),
     vnd: sandbox.HubFmt.vnd(c.value),
+    decimal: sandbox.HubFmt.decimal(c.value, c.decimals),
 }));
 process.stdout.write(JSON.stringify(out));

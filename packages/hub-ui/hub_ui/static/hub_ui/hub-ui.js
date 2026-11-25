@@ -18,23 +18,82 @@
     "use strict";
 
     // ------------------------------------------------------------------ HubFmt
+    // Làm tròn: half away from zero trên số thập phân NHƯ ĐÃ VIẾT (1.005 → "1,01", 2.5 → "3", -2.5 → "-3"),
+    // không qua nhị phân của float; kết quả về 0 thì không có dấu. Rỗng/null/không phải số → "".
+    // Giống hệt hub_ui.formatting (Python). Số JS lớn hơn 2^53 đã mất độ chính xác trước khi vào đây —
+    // muốn chính xác tuyệt đối hãy truyền chuỗi số (vd "12345678901234567890.125").
+    const NUM_RE = /^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/;
+    const MAX_EXP = 400; // mũ vượt ngưỡng coi như không phải số (cùng ngưỡng với Python)
+
+    /** Số/chuỗi → {neg, int, frac} (chuỗi chữ số, không mũ) hoặc null nếu rỗng/không phải số. */
+    function decParts(v) {
+        let s;
+        if (v === null || v === undefined) return null;
+        if (typeof v === "boolean") s = v ? "1" : "0";
+        else if (typeof v === "number") { if (!Number.isFinite(v)) return null; s = String(v); }
+        else if (typeof v === "string") s = v.trim();
+        else return null;
+        const m = NUM_RE.exec(s);
+        if (!m || (m[2] === "" && !m[3])) return null;
+        let int = m[2], frac = m[3] || "";
+        const exp = m[4] ? parseInt(m[4], 10) : 0;
+        if (Math.abs(exp) > MAX_EXP) return null;
+        if (exp > 0) {
+            frac = frac.padEnd(exp, "0");
+            int += frac.slice(0, exp);
+            frac = frac.slice(exp);
+        } else if (exp < 0) {
+            int = int.padStart(-exp, "0");
+            frac = int.slice(int.length + exp) + frac;
+            int = int.slice(0, int.length + exp);
+        }
+        return { neg: m[1] === "-", int, frac };
+    }
+
+    /** Làm tròn half away from zero về dec số lẻ; trả { neg, int, frac } với frac dài đúng dec. */
+    function roundParts(p, dec) {
+        let int = p.int, frac = p.frac;
+        if (frac.length <= dec) {
+            frac = frac.padEnd(dec, "0");
+        } else {
+            const up = frac.charCodeAt(dec) >= 53; // chữ số kế tiếp >= 5
+            const digits = (int + frac.slice(0, dec)).split("");
+            if (up) {
+                let i = digits.length - 1;
+                while (i >= 0 && digits[i] === "9") { digits[i] = "0"; i--; }
+                if (i < 0) digits.unshift("1"); else digits[i] = String(Number(digits[i]) + 1);
+            }
+            const all = digits.join("");
+            int = all.slice(0, all.length - dec);
+            frac = all.slice(all.length - dec);
+        }
+        int = int.replace(/^0+(?=\d)/, "");
+        if (int === "") int = "0";
+        const zero = /^0*$/.test(int + frac);
+        return { neg: p.neg && !zero, int, frac };
+    }
+
+    function joinVN(p, frac) {
+        return (p.neg ? "-" : "") + p.int.replace(/\B(?=(?:\d{3})+(?!\d))/g, ".") + (frac ? "," + frac : "");
+    }
+
     const HubFmt = {
-        /** 1234567.891 → "1.234.567,89" (dec số lẻ, mặc định 0). Null/NaN → "". */
+        /** 1234567.891 → "1.234.567,89" (dec số lẻ, mặc định 0; luôn đủ dec số lẻ). Rỗng/không phải số → "". */
         number(v, dec = 0) {
-            if (v === null || v === undefined || v === "") return "";
-            const n = Number(v);
-            if (Number.isNaN(n)) return String(v);
-            return n.toLocaleString("vi-VN", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+            const p = decParts(v);
+            if (!p) return "";
+            const r = roundParts(p, dec);
+            return joinVN(r, r.frac);
         },
         /** Tiền VND: làm tròn 0 lẻ, không ký hiệu. */
         vnd(v) { return HubFmt.number(v, 0); },
         /** Số có phân cách, GIỮ phần lẻ thực có (tối đa maxDec, không ép thêm số 0): 1234.5 → "1.234,5",
-         *  1234 → "1.234". Cho số lượng / đơn giá và giá trị hiện trong ô HubNumber. Null/"" → "". */
+         *  1234 → "1.234". Cho số lượng / đơn giá và giá trị hiện trong ô HubNumber. Rỗng/không phải số → "". */
         decimal(v, maxDec = 2) {
-            if (v === null || v === undefined || v === "") return "";
-            const n = Number(v);
-            if (Number.isNaN(n)) return String(v);
-            return n.toLocaleString("vi-VN", { maximumFractionDigits: maxDec });
+            const p = decParts(v);
+            if (!p) return "";
+            const r = roundParts(p, maxDec);
+            return joinVN(r, r.frac.replace(/0+$/, ""));
         },
         /** Ngược của number/decimal: "1.234.567,89" → 1234567.89. Rỗng / không phải số → null. */
         parseNumber(text) {
