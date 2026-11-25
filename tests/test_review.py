@@ -235,6 +235,18 @@ def test_commit_only_wiki_files(tmp_path, helpers):
     assert staged == ["other.txt"]
 
 
+def test_library_lists_index_first_then_pages(cfg):
+    wd = cfg.wiki_dir
+    raw(wd / "index.md", "- [B](b.md)\n- [A](a.md)\n")
+    raw(wd / "b.md", page_text(title="Beta"))
+    raw(wd / "a.md", page_text(title="Alpha"))
+    raw(wd / "old.md", page_text(status="deprecated", title="Aardvark"))
+    names = [p["page"] for p in review.library(cfg)]
+    # index first, active pages by title (the fixture adds "Totals"), deprecated last, then log.
+    assert names == ["index.md", "a.md", "b.md", "totals.md", "old.md", "log.md"]
+    assert review.queue_payload(cfg)["library"][1]["title"] == "Alpha"
+
+
 @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
 def test_read_source_only_tracked_files(tmp_path, helpers):
     helpers.init_repo(tmp_path)

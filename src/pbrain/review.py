@@ -569,6 +569,32 @@ def project_info(configs) -> list[dict]:
     ]
 
 
+def library(config) -> list[dict]:
+    """Every readable page of the wiki: the index first, then pages by title."""
+    wiki_dir = config.wiki_dir
+    if not wiki_dir.is_dir():
+        return []
+    pages = []
+    for page in wiki._page_files(wiki_dir):
+        meta = wiki.parse_front_matter(_read(page)) or {}
+        pages.append(
+            {
+                "page": page.name,
+                "title": str(meta.get("title") or page.stem),
+                "type": str(meta.get("type") or ""),
+                "trust": str(meta.get("trust") or ""),
+                "status": str(meta.get("status") or ""),
+            }
+        )
+    pages.sort(key=lambda p: (p["status"] != "active", p["title"].lower()))
+    extra = [
+        {"page": name, "title": name, "type": "", "trust": "", "status": ""}
+        for name in ("index.md", "SCHEMA.md", "log.md")
+        if (wiki_dir / name).is_file() and name not in {p["page"] for p in pages}
+    ]
+    return extra[:1] + pages + extra[1:]
+
+
 def queue_payload(config) -> dict:
     items = build_queue(config)
     counts: dict[str, int] = {}
@@ -580,6 +606,7 @@ def queue_payload(config) -> dict:
         "total": len(items),
         "git_changes": git_changes(config),
         "sections": list(config.wiki.sections),
+        "library": library(config),
         "pages": sorted(p.name for p in wiki._page_files(config.wiki_dir))
         if config.wiki_dir.is_dir()
         else [],

@@ -107,6 +107,7 @@ dialog td { padding: 3px 12px 3px 0; } kbd { background: var(--code); border-rad
 #srcHead b { flex: 1; overflow-wrap: anywhere; }
 #srcBody { min-height: 0; overflow: auto; padding: 4px 18px 16px; }
 #srcBody .hit { background: color-mix(in srgb, #f5c400 30%, transparent); scroll-margin-top: 8px; }
+.chip[data-kind="read"] { margin-right: 10px; }
 a.ref { text-decoration: underline dotted; }
 .anchor { text-decoration: none; opacity: .45; font-weight: 400; }
 .anchor:hover { opacity: 1; }
@@ -140,6 +141,7 @@ a.ref { text-decoration: underline dotted; }
 const TOKEN = "__PBRAIN_TOKEN__";
 const I18N = {
   en: {
+    read: "Read", indexTitle: "Index",
     all: "All", lint: "Lint", drift: "Drift", inbox: "Inbox", trust: "Trust",
     changed: "Changed files", commit: "Commit", commitMsg: "docs(wiki): review decisions",
     commitHint: "Only files under the wiki directory are committed. Nothing is pushed.",
@@ -162,6 +164,7 @@ const I18N = {
     covers: "Covers", inboxFrom: "Inbox file", pending: "pending", fail: "Request failed"
   },
   vi: {
+    read: "Đọc", indexTitle: "Mục lục",
     all: "Tất cả", lint: "Lint", drift: "Lệch code", inbox: "Hộp thư", trust: "Độ tin cậy",
     changed: "File thay đổi", commit: "Commit", commitMsg: "docs(wiki): duyệt quyết định",
     commitHint: "Chỉ commit các file trong thư mục wiki. Không push.",
@@ -365,10 +368,40 @@ function pageSources(text) {
   return out;
 }
 
+/* ---------- read mode: every page, links between pages ---------- */
+function libraryItems() {
+  const d = proj(); if (!d || !d.library) return [];
+  return d.library.map((p) => ({
+    id: "page:" + p.page, kind: "page", page: p.page,
+    title: p.page === "index.md" ? t("indexTitle") : p.title,
+    detail: [p.type, p.trust, p.status !== "active" ? p.status : ""].filter(Boolean).join(" · ") || p.page,
+  }));
+}
+function openPage(name) {
+  S.kind = "read"; S.sel = "page:" + name; S.editing = S.panel = S.diff = S.note = null;
+  history.pushState(null, "", hashFor(S.sel));  // so the browser's Back returns to the previous page
+  render();
+  $("detail").scrollTop = 0;
+}
+/* Relative links inside a page: another wiki page opens in read mode, any other tracked file
+   opens in the source viewer, external links open in a new tab as before. */
+document.addEventListener("click", (e) => {
+  const a = e.target.closest("#body a[href]"); if (!a || a.dataset.src) return;
+  const href = a.getAttribute("href");
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith("#")) return;
+  e.preventDefault();
+  const clean = href.split("#")[0];
+  const d = proj();
+  if (d && d.library && d.library.some((p) => p.page === clean)) return openPage(clean);
+  const wikiDir = (S.projects[S.cur] || {}).wiki || "";
+  openSource((wikiDir ? wikiDir.replace(/\/$/, "") + "/" : "") + clean);
+});
+
 /* ---------- data ---------- */
 const proj = () => S.data[S.cur];
 function visible() {
   const d = proj(); if (!d || !d.items) return [];
+  if (S.kind === "read") return libraryItems();
   return d.items.filter((i) => !S.kind || i.kind === S.kind);
 }
 function current() { return visible().find((i) => i.id === S.sel) || null; }
@@ -388,8 +421,10 @@ function applyHash(final) {
   if (!S.want) return;
   const idx = S.projects.findIndex((p) => p.name === S.want.name);
   const d = S.data[idx];
-  if (d && d.items && d.items.find((x) => x.id === S.want.id)) {
-    S.cur = idx; S.kind = null; S.sel = S.want.id; S.want = null;
+  const isPage = S.want.id.startsWith("page:");
+  const pool = d ? (isPage ? (S.cur = idx, libraryItems()) : d.items || []) : [];
+  if (d && pool.find((x) => x.id === S.want.id)) {
+    S.cur = idx; S.kind = isPage ? "read" : null; S.sel = S.want.id; S.want = null;
     S.editing = S.panel = S.diff = S.note = null;
   } else if (final || idx < 0 || d) { S.want = null; toast(t("gone")); }
 }
@@ -419,6 +454,7 @@ async function init() {
   for (let i = 1; i < S.projects.length; i++) await loadProject(i);
   applyHash(true); render();
 }
+window.addEventListener("popstate", () => window.dispatchEvent(new HashChangeEvent("hashchange")));
 window.addEventListener("hashchange", () => {
   const want = readHash();
   if (!want || location.hash === hashFor(S.sel)) return;
@@ -436,8 +472,8 @@ function render() {
     return '<button class="tab' + (p.index === S.cur ? " on" : "") + '" data-tab="' + p.index + '" title="' + esc(p.root) + '">' + esc(p.name) + " " + n + "</button>";
   }).join("");
   const counts = d ? d.counts : {};
-  $("chips").innerHTML = [null, ...KINDS].map((k) => {
-    const n = k ? counts[k] || 0 : d ? d.total : 0;
+  $("chips").innerHTML = ["read", null, ...KINDS].map((k) => {
+    const n = k === "read" ? (d && d.library ? d.library.length : 0) : k ? counts[k] || 0 : d ? d.total : 0;
     return '<button class="chip' + (S.kind === k ? " on" : "") + '" data-kind="' + (k || "") + '">' + t(k || "all") + " " + n + "</button>";
   }).join("");
   const changes = d ? d.git_changes : [];
@@ -463,8 +499,8 @@ async function renderDetail() {
   const token = (renderDetail.n = (renderDetail.n || 0) + 1);
   let html = "<h2>" + esc(item.title) + ' <a class="anchor" href="' + esc(hashFor(item.id)) + '">#</a></h2><div class="sub"><span class="badge ' + (item.kind === "lint" ? item.severity : item.kind) + '">' +
     esc(item.kind) + "</span>" + esc(item.page || "") + "</div>";
-  html += '<div class="hint">' + esc(t("hint_" + item.kind)) + "</div>";
-  if (item.kind !== "inbox") html += '<div class="msg">' + esc(item.detail) + "</div>";
+  if (item.kind !== "page") html += '<div class="hint">' + esc(t("hint_" + item.kind)) + "</div>";
+  if (item.kind !== "inbox" && item.kind !== "page") html += '<div class="msg">' + esc(item.detail) + "</div>";
   if (S.note) html += '<div class="msg ' + (S.note.bad ? "bad" : "") + '">' + esc(S.note.text) + "</div>";
   html += actionsHtml(item);
   html += '<div id="panel"></div><div id="body">' + t("loading") + "</div>";

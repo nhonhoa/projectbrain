@@ -66,6 +66,12 @@ lists everything waiting for a human decision, so you do not edit front matter b
 - pages whose covered code drifted (confirm, show the diff, edit),
 - every other lint finding (edit).
 
+It is also where you read the wiki. **Read** lists every page, index first; links between pages
+open in place and the browser's Back works. A `sources` or `covers` entry opens the file it names
+when that file is tracked by git in one of the open projects (a GitHub blob URL maps to the project
+whose origin is that repository), and references such as "item 12" in a page jump to that item.
+The address bar always names what is open (`#<project>/<item>`), so you can paste it to someone.
+
 Keys: `j`/`k` move, `a` approve or confirm, `e` edit, `d` discard or deprecate, `?` help. A
 "changed files" button commits only the wiki directory. The page is local-only: it binds to
 127.0.0.1, checks the `Host` and `Origin` headers, requires a per-run token on every write, and
