@@ -99,6 +99,9 @@ dialog td { padding: 3px 12px 3px 0; } kbd { background: var(--code); border-rad
   main { grid-template-columns: 1fr; grid-template-rows: minmax(120px, 38vh) 1fr; }
   #list { border-right: 0; border-bottom: 1px solid var(--line); }
 }
+#body table { border-collapse: collapse; margin: 8px 0; }
+#body th, #body td { border: 1px solid color-mix(in srgb, currentColor 22%, transparent); padding: 4px 8px; text-align: left; vertical-align: top; }
+.hint { margin: 6px 0 10px; opacity: .8; }
 </style>
 </head>
 <body>
@@ -130,6 +133,10 @@ const I18N = {
     all: "All", lint: "Lint", drift: "Drift", inbox: "Inbox", trust: "Trust",
     changed: "Changed files", commit: "Commit", commitMsg: "docs(wiki): review decisions",
     commitHint: "Only files under the wiki directory are committed. Nothing is pushed.",
+    hint_trust: "You asked for this page but never confirmed its content. Approve if it says what you want, edit it, or deprecate it.",
+    hint_inbox: "A note waiting to be filed. Keep it as a new page, merge it into an existing page, or discard it.",
+    hint_drift: "The code this page describes changed after the page was last checked. Confirm if the page is still right, or edit it.",
+    hint_lint: "The page breaks a wiki convention. Edit it to fix the finding.",
     nothing: "Nothing waiting", nothingSub: "No decisions are pending in this project.",
     approve: "Approve", confirm: "Confirm (still correct)", edit: "Edit", deprecate: "Deprecate",
     newPage: "New page", append: "Append to...", discard: "Discard", showDiff: "Show diff",
@@ -145,6 +152,10 @@ const I18N = {
     all: "Tất cả", lint: "Lint", drift: "Lệch code", inbox: "Hộp thư", trust: "Độ tin cậy",
     changed: "File thay đổi", commit: "Commit", commitMsg: "docs(wiki): duyệt quyết định",
     commitHint: "Chỉ commit các file trong thư mục wiki. Không push.",
+    hint_trust: "Trang này viết theo yêu cầu của bạn nhưng bạn chưa xác nhận nội dung. Đúng ý thì Duyệt, chưa đúng thì Sửa, không cần nữa thì Ngừng dùng.",
+    hint_inbox: "Ghi chú đang chờ xếp chỗ. Giữ thành trang mới, gộp vào trang có sẵn, hoặc bỏ.",
+    hint_drift: "Code mà trang này mô tả đã đổi sau lần kiểm gần nhất. Trang còn đúng thì Xác nhận, hết đúng thì Sửa.",
+    hint_lint: "Trang vi phạm quy ước wiki. Bấm Sửa để chỉnh theo thông báo.",
     nothing: "Không còn gì chờ duyệt", nothingSub: "Dự án này không có quyết định nào đang chờ.",
     approve: "Duyệt", confirm: "Xác nhận (vẫn đúng)", edit: "Sửa", deprecate: "Ngừng dùng",
     newPage: "Trang mới", append: "Gộp vào...", discard: "Bỏ", showDiff: "Xem diff",
@@ -197,7 +208,16 @@ function inline(raw) {
   return s.replace(/\u0000(\d+)\u0000/g, (_, n) => "<code>" + codes[+n] + "</code>");
 }
 function markdown(text) {
-  const out = []; let list = null, para = [], fence = null, item = null;
+  const out = []; let list = null, para = [], fence = null, item = null, table = [];
+  const cells = (l) => { let s = l.trim().slice(1); if (s.endsWith("|")) s = s.slice(0, -1); return s.split("|").map((c) => c.trim()); };
+  const isSep = (l) => cells(l).every((c) => c && [...c].every((ch) => ch === "-" || ch === ":"));
+  const flushTable = () => {
+    if (!table.length) return;
+    const head = table.length > 1 && isSep(table[1]);
+    const row = (l, tag) => "<tr>" + cells(l).map((c) => "<" + tag + ">" + inline(c) + "</" + tag + ">").join("") + "</tr>";
+    out.push("<table>" + table.filter((l, i) => !(head && i === 1)).map((l, i) => row(l, head && i === 0 ? "th" : "td")).join("") + "</table>");
+    table = [];
+  };
   const flushPara = () => { if (para.length) out.push("<p>" + inline(para.join(" ")) + "</p>"); para = []; };
   const flushItem = () => { if (item !== null) out.push("<li>" + inline(item.join(" ")) + "</li>"); item = null; };
   const flushList = () => { flushItem(); if (list) { out.push("</" + list + ">"); list = null; } };
@@ -208,6 +228,8 @@ function markdown(text) {
       continue;
     }
     if (/^\s*(```|~~~)/.test(line)) { flushPara(); flushList(); fence = []; continue; }
+    if (line.trim().startsWith("|")) { flushPara(); flushList(); table.push(line); continue; }
+    flushTable();
     const h = /^(#{1,6})\s+(.*)$/.exec(line);
     const li = /^\s*([-*+]|\d+\.)\s+(.*)$/.exec(line);
     if (h) { flushPara(); flushList(); const n = Math.min(h[1].length + 1, 4); out.push("<h" + n + ">" + inline(h[2]) + "</h" + n + ">"); }
@@ -220,7 +242,7 @@ function markdown(text) {
     else { flushList(); para.push(line.trim()); }
   }
   if (fence !== null) out.push("<pre><code>" + esc(fence.join("\n")) + "</code></pre>");
-  flushPara(); flushList();
+  flushTable(); flushPara(); flushList();
   return out.join("\n");
 }
 function renderPage(text) {
@@ -300,6 +322,7 @@ async function renderDetail() {
   const token = (renderDetail.n = (renderDetail.n || 0) + 1);
   let html = "<h2>" + esc(item.title) + '</h2><div class="sub"><span class="badge ' + (item.kind === "lint" ? item.severity : item.kind) + '">' +
     esc(item.kind) + "</span>" + esc(item.page || "") + "</div>";
+  html += '<div class="hint">' + esc(t("hint_" + item.kind)) + "</div>";
   if (item.kind !== "inbox") html += '<div class="msg">' + esc(item.detail) + "</div>";
   if (S.note) html += '<div class="msg ' + (S.note.bad ? "bad" : "") + '">' + esc(S.note.text) + "</div>";
   html += actionsHtml(item);

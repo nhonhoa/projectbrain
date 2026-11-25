@@ -30,7 +30,7 @@ from . import wiki
 INBOX = "_inbox"
 MAX_BODY = 2 * 1024 * 1024
 DIFF_LINES = 400
-KIND_ORDER = ("lint_error", "drift", "inbox", "trust_requested", "trust_inferred", "lint_warning")
+KIND_ORDER = ("lint_error", "drift", "inbox", "trust_requested", "lint_warning")
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "[::1]")
 
 
@@ -182,10 +182,10 @@ def build_queue(config) -> list[dict]:
 
     for name, meta in metas.items():
         trust = str(meta.get("trust") or "")
-        if meta.get("status") != "active" or trust == "agreed" or not trust:
+        # ``inferred`` is a resting state (read back from code), not a decision someone owes.
+        if meta.get("status") != "active" or trust != "requested":
             continue
-        bucket = "trust_requested" if trust == "requested" else "trust_inferred"
-        queue[bucket].append(
+        queue["trust_requested"].append(
             {
                 "id": _item_id("trust", name),
                 "kind": "trust",

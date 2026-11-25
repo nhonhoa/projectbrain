@@ -61,7 +61,7 @@ pbrain sync                      fetch the shared knowledge repos
 `pbrain review` starts a small web page on your machine (default `http://127.0.0.1:8765/`) that
 lists everything waiting for a human decision, so you do not edit front matter by hand:
 
-- pages whose `trust` is not `agreed` (approve, edit, deprecate),
+- pages whose `trust` is `requested`: asked for but never confirmed (approve, edit, deprecate),
 - sections parked in `<wiki>/_inbox/*.md` (turn into a new page, append to a page, or discard),
 - pages whose covered code drifted (confirm, show the diff, edit),
 - every other lint finding (edit).

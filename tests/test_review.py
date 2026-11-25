@@ -72,7 +72,6 @@ def test_queue_kinds_and_order(cfg):
         ("inbox", None),
         ("inbox", None),
         ("trust", "requested"),
-        ("trust", "inferred"),
     ]
     assert not [i for i in items if i["page"] == "old.md" and i["kind"] == "trust"]
     assert all(i["id"] for i in items)

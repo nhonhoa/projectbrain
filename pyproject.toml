@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pbrain"
-version = "0.2.0"
+version = "0.2.1"
 description = "Project knowledge for AI coding agents: a markdown wiki in git, behavior cases, and reuse-first guardrails."
 readme = "README.md"
 license = "MIT"
