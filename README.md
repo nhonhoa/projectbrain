@@ -155,3 +155,7 @@ pip install -e . pytest ruff
 pytest
 ruff check .
 ```
+
+## License
+
+MIT. See [LICENSE](LICENSE). Contributions are welcome under the same license.
