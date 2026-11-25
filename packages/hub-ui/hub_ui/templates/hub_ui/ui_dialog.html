@@ -7,10 +7,12 @@ hiện được ĐÈ LÊN modal khác mà không lỗi backdrop. Nhúng MỘT l�
 ({% include "hub_ui/ui_dialog.html" %}) → mọi trang gọi trực tiếp, KHÔNG include lại.
 
 API (đều trả Promise — dùng await trong hàm async):
-  await UIDialog.alert(message, {title?, variant?})            // variant: info|success|warning|danger
-  const ok = await UIDialog.confirm(message, {title?, okText?, cancelText?, variant?})
+  await UIDialog.alert(message, {title?, variant?, detail?})   // variant: info|success|warning|danger
+  const ok = await UIDialog.confirm(message, {title?, okText?, cancelText?, variant?, detail?})
   UIDialog.toast(message, variant?)                            // thông báo nhỏ góc phải, tự ẩn 3s
-Message hiện dạng text (tự escape HTML, giữ xuống dòng).
+Message hiện dạng text (gán bằng textContent: không bao giờ chèn HTML, giữ xuống dòng 
+).
+detail (tùy chọn, alert/confirm/prompt): khối chi tiết dài hơn, chữ nhỏ, cuộn được, cũng là text thuần.
 Selector ổn định cho automation: #ui-dialog, #ui-dialog-message, #ui-dialog-ok, #ui-dialog-cancel.
 {% endcomment %}
 <script>
@@ -39,6 +41,7 @@ window.UIDialog = (function () {
                         <div class="flex-grow-1">
                             <h6 id="ui-dialog-title" class="fw-bold mb-2"></h6>
                             <div id="ui-dialog-message" style="white-space:pre-wrap; word-break:break-word;"></div>
+                            <pre id="ui-dialog-detail" class="small text-muted mt-2 mb-0 d-none" style="white-space:pre-wrap; word-break:break-word; max-height:40vh; overflow:auto; font-family:inherit;"></pre>
                             <input type="text" id="ui-dialog-input" class="form-control form-control-sm mt-3 d-none" autocomplete="off">
                         </div>
                     </div>
@@ -73,7 +76,10 @@ window.UIDialog = (function () {
         const variant = opts.variant || "info";
         overlay.querySelector("#ui-dialog-icon").className = `bi fs-3 ${VARIANT_ICON[variant] || VARIANT_ICON.info}`;
         overlay.querySelector("#ui-dialog-title").textContent = opts.title || "";
-        overlay.querySelector("#ui-dialog-message").innerHTML = HubFmt.escapeHtml(message);
+        overlay.querySelector("#ui-dialog-message").textContent = message == null ? "" : String(message);
+        const detail = overlay.querySelector("#ui-dialog-detail");
+        detail.textContent = opts.detail == null ? "" : String(opts.detail);
+        detail.classList.toggle("d-none", opts.detail == null || opts.detail === "");
         const ok = overlay.querySelector("#ui-dialog-ok");
         const cancel = overlay.querySelector("#ui-dialog-cancel");
         ok.textContent = opts.okText || "OK";
@@ -94,7 +100,7 @@ window.UIDialog = (function () {
     function alert(message, opts) {
         opts = opts || {};
         return show(message, {
-            title: opts.title ?? "Thông báo", variant: opts.variant || "info", showCancel: false,
+            title: opts.title ?? "Thông báo", variant: opts.variant || "info", showCancel: false, detail: opts.detail,
         }).then(() => undefined);
     }
 
@@ -102,7 +108,7 @@ window.UIDialog = (function () {
         opts = opts || {};
         return show(message, {
             title: opts.title ?? "Xác nhận", variant: opts.variant || "warning", showCancel: true,
-            okText: opts.okText || "Đồng ý", cancelText: opts.cancelText || "Hủy",
+            okText: opts.okText || "Đồng ý", cancelText: opts.cancelText || "Hủy", detail: opts.detail,
         });
     }
 
@@ -116,6 +122,7 @@ window.UIDialog = (function () {
             showCancel: true,
             okText: opts.okText || "Xác nhận",
             cancelText: opts.cancelText || "Đóng",
+            detail: opts.detail,
             input: { placeholder: opts.placeholder || "", value: opts.value || "" },
         }).then((ok) => {
             const value = (overlay.querySelector("#ui-dialog-input").value || "").trim();

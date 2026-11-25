@@ -1,0 +1,80 @@
+/* ==========================================================================
+   Hub UI - opinionated base look ({% static 'hub_ui/hub-ui-base.css' %}), load BEFORE hub-ui.css.
+   Restyles plain Bootstrap 5.3 / element selectors: tokens, html/body, navbar, nav-link, btn-primary,
+   card, dropdowns (hover-open), menu quick search. Skip this file to keep stock Bootstrap look.
+   ========================================================================== */
+:root {
+    --hub-primary: #00468c;
+    --hub-primary-dark: #003366;
+    --hub-primary-soft: #e6eef7;
+    --hub-bg: #f4f7f6;
+    --hub-surface: #ffffff;
+    --hub-surface-2: #f1f4f7;
+    --hub-line: #dfe5ec;
+    --hub-text: #212529;
+    --hub-muted: #6c757d;
+    --hub-radius: 8px;
+    --hub-shell-max: 1800px;   /* trần chiều rộng: full-width tới 1800px rồi canh giữa */
+}
+
+/* Mật độ: giao diện quản trị dùng cỡ chữ gốc 14px (Bootstrap mặc định 16px) */
+html { font-size: 14px; }
+body { background-color: var(--hub-bg); color: var(--hub-text); }
+
+/* --------------------------------------------------------------------------
+   Navbar + menu (navbar của base template)
+   -------------------------------------------------------------------------- */
+/* Navbar tạo stacking context cao hơn mọi phần dính của trang (tiêu đề sticky 1010, thead 2)
+   để menu thả xuống không bị nội dung đè lên. */
+.navbar { background-color: var(--hub-primary); padding-top: .35rem; padding-bottom: .35rem; position: relative; z-index: 1030; }
+.navbar-brand, .nav-link { color: #fff !important; }
+.btn-primary { background-color: var(--hub-primary); border: none; }
+.btn-primary:hover, .btn-primary:focus { background-color: var(--hub-primary-dark); }
+.card { border-radius: var(--hub-radius); border: none; box-shadow: 0 2px 6px rgba(0, 0, 0, .08); }
+.dropdown-menu { border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, .15); border-radius: var(--hub-radius); }
+.dropdown-item { padding: 7px 18px; font-size: .95rem; }
+.dropdown-item:hover { background-color: #f8f9fa; color: var(--hub-primary); }
+.dropdown-item i { width: 1.2rem; text-align: center; }
+@media (min-width: 992px) {
+    .navbar-nav .nav-item.dropdown:hover > .dropdown-menu { display: block; margin-top: 0; }
+    /* Mở bằng hover (CSS thuần) không qua Popper nên Bootstrap không gắn [data-bs-popper];
+       tự canh phải cho menu người dùng để không tràn ra ngoài viewport. */
+    .navbar-nav .dropdown-menu-end { right: 0; left: auto; }
+}
+/* Navbar luôn nằm ngang (navbar-expand, không gập hamburger): thiếu chỗ thì xuống dòng. */
+.navbar-collapse { flex-wrap: wrap; }
+.navbar-collapse > .navbar-nav { flex-wrap: wrap; }
+/* Submenu cấp 2: desktop mở khi hover, mobile hiển thị tĩnh thụt lề */
+.dropdown-submenu { position: relative; }
+.dropdown-submenu > .dropdown-menu { top: 0; left: 100%; margin-top: -8px; display: none; }
+.dropdown-submenu > .dropdown-item .submenu-arrow { font-size: .7rem; opacity: .5; }
+@media (min-width: 992px) {
+    .dropdown-submenu:hover > .dropdown-menu { display: block; }
+}
+@media (max-width: 991.98px) {
+    .dropdown-submenu > .dropdown-menu {
+        display: block; position: static; border: none; box-shadow: none;
+        padding: 0 0 0 1.5rem; margin: 0;
+    }
+}
+/* Search nhanh chức năng (Ctrl+K) */
+#menuSearchWrap { position: relative; }
+#menuSearchInput { min-width: 220px; }
+#menuSearchResults {
+    position: absolute; top: 100%; right: 0; z-index: 1050;
+    min-width: 340px; max-width: 420px; max-height: 60vh; overflow-y: auto;
+    background: #fff; border-radius: var(--hub-radius); box-shadow: 0 4px 12px rgba(0, 0, 0, .2);
+    display: none;
+}
+#menuSearchResults .search-item { cursor: pointer; }
+#menuSearchResults .search-item.active,
+#menuSearchResults .search-item:hover { background-color: #eef4fb; }
+#menuSearchResults .search-path { font-size: .72rem; }
+#menuSearchResults .search-brief { font-size: .8rem; }
+@media (max-width: 991.98px) {
+    #menuSearchResults { position: static; min-width: 100%; max-width: 100%; }
+}
+@media print {
+    .navbar { display: none !important; }
+    html { font-size: 12px; }
+}

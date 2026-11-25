@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.3.0
+
+Upgrade: to keep the 0.2 look, add `hub_ui/hub-ui-base.css` BEFORE `hub_ui/hub-ui.css` in your base
+template. Without the base file you get stock Bootstrap plus the package components only.
+
+Added
+- `hub-ui-base.css`: the opinionated look (tokens, `html`/`body`, navbar, `.nav-link`, `.btn-primary`,
+  `.card`, dropdowns incl. hover-open and submenus, menu quick search, print font size).
+- `HubPager` (hub-ui.js): client-side pager for lists rendered in JS, same markup/classes as
+  `pagination.html`. `HubPager.attach(container, {total, pageSize, page, sizes, onChange})` returns
+  `{set(total, page?), get()}`; pure helpers `HubPager.range()`, `pageList()`, `html()`.
+- `SearchCombobox.refresh(selectEl)`; `enhance()` now also re-reads placeholder / required / disabled
+  whenever the select's options change (MutationObserver) or its form resets.
+- `SearchCombobox` free-text create on `picker()` and `enhance()`: `create: true | {label}` plus optional
+  `onCreate(text)` (returns a value, `{value, label}`, or a Promise; `null`/`false` cancels). On a
+  `<select data-combobox data-create>` the new option is added and selected.
+- `maxOptions` (alias of `maxItems`) to limit rendered suggestions; `data-max-options` on selects.
+- `picker().configure({required, placeholder})`.
+- `UIDialog.alert/confirm/prompt` accept `detail`: a longer, small, scrollable plain-text block.
+- Tests: CSS selector coverage against a frozen copy of the 0.2.0 stylesheet, node tests for
+  `HubPager` and `UIDialog` text handling.
+
+Changed
+- `hub-ui.css` now contains ONLY package components (`.hub-*`, `.sc-*`, `.gt-*`, dialog overlays, pager
+  support). Every `--hub-*` variable has a fallback, so it works without the base file. `.num` keeps
+  `!important` deliberately (it must beat Bootstrap `.text-start` / table alignment).
+- Printing: the `.navbar` hide rule and the 12px print font size moved to the base file.
+- `UIDialog` message is assigned with `textContent` (was escaped `innerHTML`); line breaks were and are kept.
+
 ## 0.2.0
 
 Changed (behavior) - number formatting is now one rule, identical in Python (`format_vnd`,

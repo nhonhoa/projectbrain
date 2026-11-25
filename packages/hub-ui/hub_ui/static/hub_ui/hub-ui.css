@@ -1,84 +1,16 @@
 /* ==========================================================================
-   Hub UI — CSS dùng chung cho giao diện quản trị (nạp bằng {% static 'hub_ui/hub-ui.css' %}).
-   Trang KHÔNG tự viết <style>; CSS riêng của trang đặt ở file CSS của dự án.
+   Hub UI - components stylesheet ({% static 'hub_ui/hub-ui.css' %}).
+   ONLY the package's own components (.hub-*, .sc-*, .gt-*, dialogs, pager...). Safe on a plain
+   Bootstrap 5.3 page: nothing outside those classes is restyled. Every colour/size comes from a
+   --hub-* variable WITH a fallback, so it works without hub-ui-base.css.
+   For the opinionated look (navbar, buttons, cards, font size...) also load hub-ui-base.css FIRST.
+   Pages do not write <style>; page CSS lives in the project's own CSS file.
    ========================================================================== */
-
-:root {
-    --hub-primary: #00468c;
-    --hub-primary-dark: #003366;
-    --hub-primary-soft: #e6eef7;
-    --hub-bg: #f4f7f6;
-    --hub-surface: #ffffff;
-    --hub-surface-2: #f1f4f7;
-    --hub-line: #dfe5ec;
-    --hub-text: #212529;
-    --hub-muted: #6c757d;
-    --hub-radius: 8px;
-    --hub-shell-max: 1800px;   /* trần chiều rộng: full-width tới 1800px rồi canh giữa */
-}
-
-/* Mật độ: giao diện quản trị dùng cỡ chữ gốc 14px (Bootstrap mặc định 16px) */
-html { font-size: 14px; }
-body { background-color: var(--hub-bg); color: var(--hub-text); }
-
-/* --------------------------------------------------------------------------
-   Navbar + menu (navbar của base template)
-   -------------------------------------------------------------------------- */
-/* Navbar tạo stacking context cao hơn mọi phần dính của trang (tiêu đề sticky 1010, thead 2)
-   để menu thả xuống không bị nội dung đè lên. */
-.navbar { background-color: var(--hub-primary); padding-top: .35rem; padding-bottom: .35rem; position: relative; z-index: 1030; }
-.navbar-brand, .nav-link { color: #fff !important; }
-.btn-primary { background-color: var(--hub-primary); border: none; }
-.btn-primary:hover, .btn-primary:focus { background-color: var(--hub-primary-dark); }
-.card { border-radius: var(--hub-radius); border: none; box-shadow: 0 2px 6px rgba(0, 0, 0, .08); }
-.dropdown-menu { border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, .15); border-radius: var(--hub-radius); }
-.dropdown-item { padding: 7px 18px; font-size: .95rem; }
-.dropdown-item:hover { background-color: #f8f9fa; color: var(--hub-primary); }
-.dropdown-item i { width: 1.2rem; text-align: center; }
-@media (min-width: 992px) {
-    .navbar-nav .nav-item.dropdown:hover > .dropdown-menu { display: block; margin-top: 0; }
-    /* Mở bằng hover (CSS thuần) không qua Popper nên Bootstrap không gắn [data-bs-popper];
-       tự canh phải cho menu người dùng để không tràn ra ngoài viewport. */
-    .navbar-nav .dropdown-menu-end { right: 0; left: auto; }
-}
-/* Navbar luôn nằm ngang (navbar-expand, không gập hamburger): thiếu chỗ thì xuống dòng. */
-.navbar-collapse { flex-wrap: wrap; }
-.navbar-collapse > .navbar-nav { flex-wrap: wrap; }
-/* Submenu cấp 2: desktop mở khi hover, mobile hiển thị tĩnh thụt lề */
-.dropdown-submenu { position: relative; }
-.dropdown-submenu > .dropdown-menu { top: 0; left: 100%; margin-top: -8px; display: none; }
-.dropdown-submenu > .dropdown-item .submenu-arrow { font-size: .7rem; opacity: .5; }
-@media (min-width: 992px) {
-    .dropdown-submenu:hover > .dropdown-menu { display: block; }
-}
-@media (max-width: 991.98px) {
-    .dropdown-submenu > .dropdown-menu {
-        display: block; position: static; border: none; box-shadow: none;
-        padding: 0 0 0 1.5rem; margin: 0;
-    }
-}
-/* Search nhanh chức năng (Ctrl+K) */
-#menuSearchWrap { position: relative; }
-#menuSearchInput { min-width: 220px; }
-#menuSearchResults {
-    position: absolute; top: 100%; right: 0; z-index: 1050;
-    min-width: 340px; max-width: 420px; max-height: 60vh; overflow-y: auto;
-    background: #fff; border-radius: var(--hub-radius); box-shadow: 0 4px 12px rgba(0, 0, 0, .2);
-    display: none;
-}
-#menuSearchResults .search-item { cursor: pointer; }
-#menuSearchResults .search-item.active,
-#menuSearchResults .search-item:hover { background-color: #eef4fb; }
-#menuSearchResults .search-path { font-size: .72rem; }
-#menuSearchResults .search-brief { font-size: .8rem; }
-@media (max-width: 991.98px) {
-    #menuSearchResults { position: static; min-width: 100%; max-width: 100%; }
-}
 
 /* --------------------------------------------------------------------------
    Khung trang
    -------------------------------------------------------------------------- */
-.hub-shell { max-width: var(--hub-shell-max); margin: 0 auto; padding: 0 1rem; }
+.hub-shell { max-width: var(--hub-shell-max, 1800px); margin: 0 auto; padding: 0 1rem; }
 .hub-main { padding-bottom: 1.5rem; }
 /* Trang dạng form / đọc (cấu hình, hồ sơ...): thu hẹp để dễ đọc */
 .hub-narrow { max-width: 1100px; margin-left: auto; margin-right: auto; }
@@ -90,17 +22,17 @@ body { background-color: var(--hub-bg); color: var(--hub-text); }
 }
 .hub-page-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: .5rem; min-width: 0; }
 .hub-page-title h1 {
-    font-size: 1.15rem; font-weight: 700; margin: 0; color: var(--hub-primary-dark); line-height: 1.3;
+    font-size: 1.15rem; font-weight: 700; margin: 0; color: var(--hub-primary-dark, #003366); line-height: 1.3;
 }
 .hub-page-title .badge { font-size: .72rem; font-weight: 600; }
-.hub-page-subtitle { color: var(--hub-muted); font-size: .85rem; }
+.hub-page-subtitle { color: var(--hub-muted, #6c757d); font-size: .85rem; }
 .hub-page-actions { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; }
 
 /* --------------------------------------------------------------------------
    Thanh lọc (HubFilterBar)
    -------------------------------------------------------------------------- */
 .hub-filterbar {
-    background: var(--hub-surface); border: 1px solid var(--hub-line); border-radius: var(--hub-radius);
+    background: var(--hub-surface, #ffffff); border: 1px solid var(--hub-line, #dfe5ec); border-radius: var(--hub-radius, 8px);
     padding: .5rem .75rem; margin-bottom: .6rem;
 }
 .hub-filterbar form { display: flex; align-items: flex-end; flex-wrap: wrap; gap: .4rem .75rem; }
@@ -111,7 +43,7 @@ body { background-color: var(--hub-bg); color: var(--hub-text); }
 .hub-filterbar.is-collapsed .hub-field.is-folded { display: none; }
 .hub-field { min-width: 0; }
 .hub-field > .form-label, .hub-filterbar .form-label {
-    display: block; font-size: .72rem; font-weight: 600; color: var(--hub-muted); margin-bottom: .15rem;
+    display: block; font-size: .72rem; font-weight: 600; color: var(--hub-muted, #6c757d); margin-bottom: .15rem;
     white-space: nowrap;
 }
 .hub-field.w-search { flex: 1 1 220px; max-width: 420px; }
@@ -119,11 +51,11 @@ body { background-color: var(--hub-bg); color: var(--hub-text); }
 .hub-chips { display: none; align-items: center; flex-wrap: wrap; gap: .25rem; align-self: center; padding-bottom: .3rem; }
 .hub-filterbar.is-collapsed .hub-chips { display: flex; }
 .hub-chip {
-    font-size: .74rem; line-height: 1.5; border: 1px solid var(--hub-line); background: var(--hub-surface-2);
-    border-radius: 999px; padding: .08rem .6rem; cursor: pointer; color: var(--hub-muted); white-space: nowrap;
+    font-size: .74rem; line-height: 1.5; border: 1px solid var(--hub-line, #dfe5ec); background: var(--hub-surface-2, #f1f4f7);
+    border-radius: 999px; padding: .08rem .6rem; cursor: pointer; color: var(--hub-muted, #6c757d); white-space: nowrap;
 }
-.hub-chip b { color: var(--hub-primary); font-weight: 600; }
-.hub-chip:hover { border-color: var(--hub-primary); }
+.hub-chip b { color: var(--hub-primary, #00468c); font-weight: 600; }
+.hub-chip:hover { border-color: var(--hub-primary, #00468c); }
 .hub-filterbar-toggle .badge { font-size: .62rem; vertical-align: text-top; }
 .hub-filterbar.is-collapsed .hub-filterbar-toggle .bi-chevron-up { display: none; }
 .hub-filterbar:not(.is-collapsed) .hub-filterbar-toggle .bi-chevron-down { display: none; }
@@ -148,28 +80,30 @@ body { background-color: var(--hub-bg); color: var(--hub-text); }
 .hub-table-toolbar {
     display: flex; align-items: center; flex-wrap: wrap; gap: .4rem .6rem;
     padding: .35rem .6rem; font-size: .85rem;
-    background: var(--hub-surface); border: 1px solid var(--hub-line); border-bottom: 0;
-    border-radius: var(--hub-radius) var(--hub-radius) 0 0;
+    background: var(--hub-surface, #ffffff); border: 1px solid var(--hub-line, #dfe5ec); border-bottom: 0;
+    border-radius: var(--hub-radius, 8px) var(--hub-radius, 8px) 0 0;
 }
 .hub-table-toolbar .hub-toolbar-right { margin-left: auto; display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
 .hub-table-wrap {
-    position: relative; background: var(--hub-surface);
-    border: 1px solid var(--hub-line); border-radius: var(--hub-radius);
+    position: relative; background: var(--hub-surface, #ffffff);
+    border: 1px solid var(--hub-line, #dfe5ec); border-radius: var(--hub-radius, 8px);
     overflow: auto; max-height: calc(100vh - 200px);
 }
-.hub-table-toolbar + .hub-table-wrap { border-radius: 0 0 var(--hub-radius) var(--hub-radius); }
+.hub-table-toolbar + .hub-table-wrap { border-radius: 0 0 var(--hub-radius, 8px) var(--hub-radius, 8px); }
 .hub-table-wrap > table { margin: 0; }
 .hub-table thead th {
-    position: sticky; top: 0; z-index: 2; background: var(--hub-surface-2);
-    box-shadow: inset 0 -1px 0 var(--hub-line); white-space: nowrap;
+    position: sticky; top: 0; z-index: 2; background: var(--hub-surface-2, #f1f4f7);
+    box-shadow: inset 0 -1px 0 var(--hub-line, #dfe5ec); white-space: nowrap;
     font-size: .78rem; font-weight: 600; color: #495057; vertical-align: middle;
 }
 .hub-table tfoot td, .hub-table tfoot th {
-    position: sticky; bottom: 0; z-index: 2; background: var(--hub-surface-2);
-    box-shadow: inset 0 1px 0 var(--hub-line); font-weight: 600;
+    position: sticky; bottom: 0; z-index: 2; background: var(--hub-surface-2, #f1f4f7);
+    box-shadow: inset 0 1px 0 var(--hub-line, #dfe5ec); font-weight: 600;
 }
 .hub-table > :not(caption) > * > * { padding: .35rem .5rem; }
 .hub-table td { vertical-align: middle; }
+/* .num keeps !important on purpose: it must win over Bootstrap .text-start/.text-center and table th/td alignment
+   when a numeric cell also carries those classes. Rename via your own CSS if the class name collides. */
 .num { text-align: right !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .hub-table .date { white-space: nowrap; }
 .hub-table .col-check { width: 2.2rem; text-align: center; }
@@ -186,7 +120,7 @@ body { background-color: var(--hub-bg); color: var(--hub-text); }
 }
 .hub-table-wrap.is-loading::before {
     content: ""; position: absolute; top: 45%; left: 50%; width: 2rem; height: 2rem; margin: -1rem;
-    border: .25em solid var(--hub-primary); border-right-color: transparent; border-radius: 50%;
+    border: .25em solid var(--hub-primary, #00468c); border-right-color: transparent; border-radius: 50%;
     animation: hub-spin .75s linear infinite; z-index: 6;
 }
 @keyframes hub-spin { to { transform: rotate(360deg); } }
@@ -196,31 +130,31 @@ body { background-color: var(--hub-bg); color: var(--hub-text); }
 .hub-loading.is-loading { min-height: 9rem; }
 .hub-loading.is-loading::after {
     content: "Đang tải..."; position: absolute; inset: 0; z-index: 5; background: rgba(255, 255, 255, .7);
-    display: flex; justify-content: center; align-items: flex-start; padding-top: 5.5rem; color: var(--hub-muted);
+    display: flex; justify-content: center; align-items: flex-start; padding-top: 5.5rem; color: var(--hub-muted, #6c757d);
 }
 .hub-loading.is-loading::before {
     content: ""; position: absolute; top: 2.5rem; left: 50%; width: 2rem; height: 2rem; margin-left: -1rem;
-    border: .25em solid var(--hub-primary); border-right-color: transparent; border-radius: 50%;
+    border: .25em solid var(--hub-primary, #00468c); border-right-color: transparent; border-radius: 50%;
     animation: hub-spin .75s linear infinite; z-index: 6;
 }
 
 /* Trạng thái rỗng */
-.hub-empty { text-align: center; padding: 2.5rem 1rem; color: var(--hub-muted); }
-.hub-empty .bi { font-size: 2.2rem; color: var(--hub-primary); opacity: .55; display: block; margin-bottom: .4rem; }
-.hub-empty h2 { font-size: 1rem; font-weight: 600; color: var(--hub-text); margin: 0 0 .25rem; }
+.hub-empty { text-align: center; padding: 2.5rem 1rem; color: var(--hub-muted, #6c757d); }
+.hub-empty .bi { font-size: 2.2rem; color: var(--hub-primary, #00468c); opacity: .55; display: block; margin-bottom: .4rem; }
+.hub-empty h2 { font-size: 1rem; font-weight: 600; color: var(--hub-text, #212529); margin: 0 0 .25rem; }
 .hub-empty p { margin: 0; font-size: .9rem; }
 
 /* --------------------------------------------------------------------------
    Form (trang nhập liệu)
    -------------------------------------------------------------------------- */
-.hub-form-section { background: var(--hub-surface); border: 1px solid var(--hub-line); border-radius: var(--hub-radius); margin-bottom: .6rem; }
+.hub-form-section { background: var(--hub-surface, #ffffff); border: 1px solid var(--hub-line, #dfe5ec); border-radius: var(--hub-radius, 8px); margin-bottom: .6rem; }
 .hub-form-section > .hub-form-section-title {
     display: flex; align-items: center; gap: .5rem; padding: .45rem .75rem;
-    font-weight: 600; font-size: .9rem; border-bottom: 1px solid var(--hub-line); background: var(--hub-surface-2);
-    border-radius: var(--hub-radius) var(--hub-radius) 0 0;
+    font-weight: 600; font-size: .9rem; border-bottom: 1px solid var(--hub-line, #dfe5ec); background: var(--hub-surface-2, #f1f4f7);
+    border-radius: var(--hub-radius, 8px) var(--hub-radius, 8px) 0 0;
 }
 .hub-form-section > .hub-form-section-body { padding: .6rem .75rem; }
-.hub-form-section .form-label { font-size: .75rem; font-weight: 600; color: var(--hub-muted); margin-bottom: .15rem; }
+.hub-form-section .form-label { font-size: .75rem; font-weight: 600; color: var(--hub-muted, #6c757d); margin-bottom: .15rem; }
 .hub-form-section .form-text { font-size: .74rem; }
 .hub-segment .btn { font-weight: 600; }
 
@@ -229,10 +163,10 @@ body { background-color: var(--hub-bg); color: var(--hub-text); }
    -------------------------------------------------------------------------- */
 /* Ô bảng chứa đoạn chữ dài (nội dung tin, diễn giải): một dòng, cắt "…", xem đủ qua title */
 .hub-cell-clip { max-width: 28rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hub-sticky-top { position: sticky; top: 0; z-index: 1010; background: var(--hub-bg); padding-top: .4rem; padding-bottom: .4rem; margin-top: 0; box-shadow: 0 6px 6px -6px rgba(0,0,0,.12); }
+.hub-sticky-top { position: sticky; top: 0; z-index: 1010; background: var(--hub-bg, #f4f7f6); padding-top: .4rem; padding-bottom: .4rem; margin-top: 0; box-shadow: 0 6px 6px -6px rgba(0,0,0,.12); }
 /* Cụm nút ẩn/hiện bằng [hidden] (không dùng d-flex vì !important của Bootstrap đè [hidden]) */
 .hub-inline-actions { display: inline-flex; align-items: center; gap: .4rem; }
-.hub-muted-xs { font-size: .74rem; color: var(--hub-muted); }
+.hub-muted-xs { font-size: .74rem; color: var(--hub-muted, #6c757d); }
 /* Chiều rộng cố định cho ô lọc / ô tìm trong toolbar */
 .hub-w-xs { width: 7rem; } .hub-w-sm { width: 11rem; } .hub-w-md { width: 17rem; } .hub-w-lg { width: 24rem; }
 .hub-field.hub-w-xs, .hub-field.hub-w-sm, .hub-field.hub-w-md, .hub-field.hub-w-lg { flex: 0 1 auto; }
@@ -269,23 +203,22 @@ body { background-color: var(--hub-bg); color: var(--hub-text); }
     .hub-filterbar-buttons .btn[type="submit"] { flex: 1; }
 }
 @media print {
-    .navbar, .hub-filterbar, .hub-page-actions, .hub-table-toolbar { display: none !important; }
+    .hub-filterbar, .hub-page-actions, .hub-table-toolbar { display: none !important; }
     .hub-table-wrap { max-height: none; overflow: visible; border: 0; }
-    html { font-size: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
     .hub-table-wrap.is-loading::before, .hub-loading.is-loading::before { animation: none; }
 }
 
 /* Khung hướng dẫn thu gọn đầu trang (page_guide.html của dự án) */
-.hub-guide { background: var(--hub-primary-soft); border: 1px solid var(--hub-line); border-radius: var(--hub-radius); margin-bottom: .6rem; font-size: .85rem; }
-.hub-guide > summary { cursor: pointer; padding: .4rem .75rem; font-weight: 600; color: var(--hub-primary-dark); list-style: none; display: flex; align-items: center; gap: .4rem; }
+.hub-guide { background: var(--hub-primary-soft, #e6eef7); border: 1px solid var(--hub-line, #dfe5ec); border-radius: var(--hub-radius, 8px); margin-bottom: .6rem; font-size: .85rem; }
+.hub-guide > summary { cursor: pointer; padding: .4rem .75rem; font-weight: 600; color: var(--hub-primary-dark, #003366); list-style: none; display: flex; align-items: center; gap: .4rem; }
 .hub-guide > summary::-webkit-details-marker { display: none; }
 .hub-guide > summary::after { content: "\F282"; font-family: "bootstrap-icons"; margin-left: auto; transition: transform .15s; }
 .hub-guide[open] > summary::after { transform: rotate(180deg); }
 .hub-guide-body { padding: .1rem .9rem .6rem; columns: 2 26rem; column-gap: 2rem; }
 .hub-guide-body > section { break-inside: avoid; }
-.hub-guide-body h2 { font-size: .85rem; font-weight: 700; margin: .5rem 0 .2rem; color: var(--hub-primary-dark); }
+.hub-guide-body h2 { font-size: .85rem; font-weight: 700; margin: .5rem 0 .2rem; color: var(--hub-primary-dark, #003366); }
 .hub-guide-body p, .hub-guide-body ul, .hub-guide-body ol, .hub-guide-body dl { margin-bottom: .4rem; }
 .hub-guide-body ul, .hub-guide-body ol { padding-left: 1.1rem; }
 .hub-guide-body dt { font-weight: 600; }
@@ -308,3 +241,4 @@ body { background-color: var(--hub-bg); color: var(--hub-text); }
 .gt-wrap .gt-clear { right: 1.7rem; z-index: 3; }
 .gt-search-row { position: sticky; top: -.5rem; z-index: 1; margin: -.5rem -.5rem .4rem; padding: .5rem; background: var(--bs-dropdown-bg, #fff); border-bottom: 1px solid var(--bs-border-color); }
 .gt-item.gt-hit > .form-check-label { background: var(--bs-warning-bg-subtle); border-radius: .2rem; }
+

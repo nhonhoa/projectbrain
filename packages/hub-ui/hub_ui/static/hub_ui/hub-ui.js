@@ -624,6 +624,110 @@
         window.location.href = url.toString();
     });
 
+    // ---------------------------------------------------------------- HubPager
+    // Phân trang phía client cho danh sách dựng bằng JS. Cùng markup/class với hub_ui/pagination.html
+    // nên trông y hệt bản server. Không dùng data-hub-page-size (đó là handler đổi URL của bản server).
+    //   const pager = HubPager.attach(el, {total, pageSize: 50, page: 1, sizes: [50, 100, 300],
+    //                                      onChange({page, pageSize}) { render(); }});
+    //   pager.set(total, page?)   // báo tổng mới (vd sau khi lọc); page mặc định giữ trang hiện tại
+    const HubPager = {
+        /** Phép tính trang (thuần, test được): {pages, page, from, to, offset, total, pageSize}.
+         *  from/to đếm từ 1 (0/0 khi rỗng); offset = số dòng bỏ qua (dùng cho slice). */
+        range(total, pageSize, page) {
+            total = Math.max(0, Math.floor(Number(total)) || 0);
+            pageSize = Math.max(1, Math.floor(Number(pageSize)) || 1);
+            const pages = Math.max(1, Math.ceil(total / pageSize));
+            page = Math.min(pages, Math.max(1, Math.floor(Number(page)) || 1));
+            const offset = (page - 1) * pageSize;
+            return {
+                total, pageSize, pages, page, offset,
+                from: total ? offset + 1 : 0, to: Math.min(total, offset + pageSize),
+            };
+        },
+        /** Dãy số trang rút gọn, cùng thuật toán Paginator.get_elided_page_range (3 mỗi bên, 2 ở đầu/cuối);
+         *  "…" là chuỗi. */
+        pageList(page, pages, onEachSide = 3, onEnds = 2) {
+            const rng = (a, b) => { const o = []; for (let i = a; i <= b; i++) o.push(i); return o; };
+            if (pages <= (onEachSide + onEnds) * 2) return rng(1, pages);
+            let out = [];
+            if (page > 1 + onEachSide + onEnds + 1) out = rng(1, onEnds).concat(["…"], rng(page - onEachSide, page));
+            else out = rng(1, page);
+            if (page < pages - onEachSide - onEnds - 1) {
+                out = out.concat(rng(page + 1, page + onEachSide), ["…"], rng(pages - onEnds + 1, pages));
+            } else out = out.concat(rng(page + 1, pages));
+            return out;
+        },
+        /** HTML thanh phân trang (rỗng khi chỉ có một trang và không cần chọn số dòng). */
+        html(r, sizes) {
+            const E = HubFmt.escapeHtml;
+            sizes = sizes || [];
+            if (!(r.pages > 1 || (sizes.length && r.total > sizes[0]))) return "";
+            const item = (target, label, aria, disabled) => `<li class="page-item${disabled ? " disabled" : ""}">`
+                + `<a class="page-link" href="#" data-page="${disabled ? "" : target}" aria-label="${aria}">${label}</a></li>`;
+            const first = r.page <= 1, last = r.page >= r.pages;
+            const nums = HubPager.pageList(r.page, r.pages).map((n) => (n === "…"
+                ? '<li class="page-item disabled"><span class="page-link">…</span></li>'
+                : `<li class="page-item${n === r.page ? " active" : ""}"><a class="page-link" href="#" data-page="${n}">${n}</a></li>`));
+            const sizeSel = sizes.length
+                ? ` · <label>Hiển thị</label> <select data-combobox data-hub-pager-size class="form-select form-select-sm w-auto">`
+                    + sizes.map((n) => `<option value="${E(n)}"${n === r.pageSize ? " selected" : ""}>${E(n)}</option>`).join("")
+                    + `</select> <span>dòng/trang</span>`
+                : "";
+            return `<nav class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2 small" aria-label="Phân trang">`
+                + `<span class="text-muted hub-inline-actions">Trang ${r.page}/${r.pages} · ${r.from}–${r.to} / ${r.total} dòng${sizeSel}</span>`
+                + `<ul class="pagination pagination-sm mb-0">`
+                + item(1, "«", "Trang đầu", first) + item(r.page - 1, "‹", "Trang trước", first)
+                + nums.join("")
+                + item(r.page + 1, "›", "Trang sau", last) + item(r.pages, "»", "Trang cuối", last)
+                + `</ul></nav>`;
+        },
+        attach(container, opts) {
+            opts = opts || {};
+            const sizes = (opts.sizes || []).map(Number).filter((n) => n > 0);
+            const state = {
+                total: Number(opts.total) || 0,
+                pageSize: Number(opts.pageSize) || sizes[0] || 50,
+                page: Number(opts.page) || 1,
+            };
+            function draw() {
+                const r = HubPager.range(state.total, state.pageSize, state.page);
+                state.page = r.page;
+                container.innerHTML = HubPager.html(r, sizes);
+                const sel = container.querySelector("select[data-hub-pager-size]");
+                if (sel && window.SearchCombobox) window.SearchCombobox.enhance(sel);
+                return r;
+            }
+            function notify() { if (opts.onChange) opts.onChange({ page: state.page, pageSize: state.pageSize }); }
+            container.addEventListener("click", (ev) => {
+                const a = ev.target.closest && ev.target.closest("a[data-page]");
+                if (!a) return;
+                ev.preventDefault();
+                const target = Number(a.dataset.page);
+                if (!target || target === state.page) return;
+                state.page = target;
+                draw();
+                notify();
+            });
+            container.addEventListener("change", (ev) => {
+                const sel = ev.target.closest && ev.target.closest("select[data-hub-pager-size]");
+                if (!sel) return;
+                state.pageSize = Number(sel.value) || state.pageSize;
+                state.page = 1;
+                draw();
+                notify();
+            });
+            draw();
+            return {
+                set(total, page) {
+                    state.total = Number(total) || 0;
+                    if (page != null) state.page = Number(page) || 1;
+                    return draw();
+                },
+                get() { return HubPager.range(state.total, state.pageSize, state.page); },
+            };
+        },
+    };
+
     // --------------------------------------------------------------- HubPeriod
     const HubPeriod = {
         /** Chuỗi tóm tắt kỳ đang chọn (cho chip): "Tháng 9/2026" | "01/09/26 → 30/09/26" | "04/09/26". */
@@ -862,4 +966,5 @@
     window.HubDate = HubDate;
     window.HubNumber = HubNumber;
     window.HubTable = HubTable;
+    window.HubPager = HubPager;
 })();

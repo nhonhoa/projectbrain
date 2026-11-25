@@ -25,7 +25,7 @@ API đầy đủ:
     preloadItems: async () => [items],                       // nạp MỘT lần rồi giữ trong bộ nhớ
     fetchItems: async (q) => [items],                        // tìm live, bơm thêm vào danh sách
     minChars: 2,             // số ký tự tối thiểu để tìm live (không áp cho danh sách trong bộ nhớ)
-    maxItems: 30,
+    maxItems: 30,            // (alias: maxOptions) số gợi ý tối đa được vẽ
     fill: {key: el|selector},// chọn → el.value = item.data[key]; gõ lại/xóa → el.value = ""
     inputValue: (item) => "",// (tùy chọn) chữ điền vào Ô khi chọn; mặc định item.label. Ô lọc gửi
                              // mã lên server dùng: inputValue: (it) => it.value
@@ -46,6 +46,13 @@ API đầy đủ:
       Ô chọn MỘT giá trị thay <select> dài (giữ giá trị như select, gõ-tìm như attach). Ô không
       required có nút (x) bên phải khi đang có giá trị: bấm là về rỗng + onChange(""). el = khung bọc.
   <select data-combobox> — tự thành picker (SearchCombobox.enhance), <select> gốc ẩn nhưng giữ giá trị.
+      Tạo mới tự do (thay TomSelect create): create: true | {label: (q) => "..."} và (tùy chọn)
+      onCreate(text) → value | {value, label} | Promise (null/false = hủy). Không có onCreate thì chính
+      chữ gõ là giá trị. Dòng "➕ Thêm ..." hiện cuối danh sách khi chưa có gợi ý trùng khít.
+      Trả thêm configure({required?, placeholder?}) để đổi sau khi tạo.
+  <select data-combobox> — thêm data-max-options="N", data-create (chữ gõ → option mới được chọn).
+  SearchCombobox.refresh(selectEl) — đọc lại option/placeholder/required/disabled của select đã enhance
+      (cũng tự chạy qua MutationObserver khi option đổi, và khi form reset); chưa enhance thì enhance.
   SearchCombobox.stripVN(text) — bỏ dấu tiếng Việt, lowercase (dùng chung khi cần).
 */
 window.SearchCombobox = (function () {
@@ -77,7 +84,7 @@ window.SearchCombobox = (function () {
         const src = SOURCES[opts.source] || {};
         opts = Object.assign({}, src, opts);
         const minChars = opts.minChars ?? (opts.fetchItems ? 2 : 0);
-        const maxItems = opts.maxItems || 30;
+        const maxItems = opts.maxOptions || opts.maxItems || 30;   // maxOptions: tên giống TomSelect
         // Danh sách trong bộ nhớ: mảng của trang (localItems) hoặc nạp một lần (preloadItems).
         const preload = opts.preloadItems
             && (opts.preloadItems === src.preloadItems ? opts.preloadItems : once(opts.preloadItems));
@@ -298,8 +305,9 @@ window.SearchCombobox = (function () {
             input.type = "text";
             input.className = `form-control form-control-sm ${opts.className || ""}`.trim();
         }
+        let required = !!opts.required;
         const wrap = document.createElement("span");
-        wrap.className = opts.required ? "sc-wrap" : "sc-wrap sc-clearable";
+        wrap.className = required ? "sc-wrap" : "sc-wrap sc-clearable";
         if (input.parentNode) input.replaceWith(wrap);
         wrap.appendChild(input);
         const clearBtn = document.createElement("button");
@@ -309,16 +317,18 @@ window.SearchCombobox = (function () {
         clearBtn.title = "Xóa chọn";
         clearBtn.setAttribute("aria-label", "Xóa chọn");
         clearBtn.innerHTML = '<i class="bi bi-x-circle-fill"></i>';
-        if (!opts.required) wrap.appendChild(clearBtn);
+        wrap.appendChild(clearBtn);        // ẩn khi ô bắt buộc (xem refresh)
         // (x) chỉ hiện khi ô có gì để xóa và đang dùng được.
-        const refresh = () => { clearBtn.hidden = !!(input.disabled || (!value && !input.value)); };
+        const refresh = () => { clearBtn.hidden = !!(required || input.disabled || (!value && !input.value)); };
         input.autocomplete = "off";
         if (opts.placeholder) input.placeholder = opts.placeholder;
         if (opts.title) input.title = opts.title;
         let value = "";
         let label = "";
+        const created = {};      // nhãn của giá trị vừa tạo bằng create (không có trong localItems)
         const labelOf = (v) => {
             if (!v) return "";
+            if (created[v] != null) return created[v];
             const hit = (opts.localItems ? opts.localItems() : []).find((it) => String(it.value) === v);
             return hit ? hit.label : (opts.labelOf ? opts.labelOf(v) : v);
         };
@@ -330,14 +340,34 @@ window.SearchCombobox = (function () {
             if (opts.onChange) opts.onChange(v, it);
         };
         set(opts.value);
+        // create / onCreate: dòng "thêm mới" điền thẳng giá trị mới vào picker (như TomSelect create).
+        let createItem = opts.createItem;
+        if (!createItem && (opts.create || opts.onCreate)) {
+            const cfg = typeof opts.create === "object" ? opts.create : {};
+            createItem = {
+                label: cfg.label,
+                onCreate: async (q) => {
+                    const r = opts.onCreate ? await opts.onCreate(q) : q;
+                    if (r == null || r === false || r === "") return;
+                    const v = String(typeof r === "object" ? r.value : r);
+                    const l = String(typeof r === "object" ? (r.label ?? r.value) : r);
+                    created[v] = l;
+                    label = l;
+                    input.value = l;
+                    change(v, { value: v, label: l, created: true });
+                    refresh();
+                },
+            };
+        }
         attach(input, Object.assign({}, opts, {
+            createItem,
             onSelect: (it) => { label = String(it.label); change(String(it.value), it); },
             onClear: null,
             onFreeText: null,
         }));
         // Chạy sau xử lý blur của attach (150ms) — lúc đó gõ đúng nhãn đã được tự chọn.
         input.addEventListener("blur", () => setTimeout(() => {
-            if (!input.value.trim() && !opts.required) { label = ""; change("", null); }
+            if (!input.value.trim() && !required) { label = ""; change("", null); }
             else if (input.value !== label) input.value = label;
             refresh();
         }, 200));
@@ -351,7 +381,17 @@ window.SearchCombobox = (function () {
             change("", null);
             refresh();
         });
-        return { el: wrap, input, get value() { return value; }, set };
+        // Đổi cấu hình sau khi tạo (select đổi option → placeholder / bắt buộc đổi theo).
+        function configure(cfg) {
+            if (cfg.required != null) {
+                required = !!cfg.required;
+                wrap.classList.toggle("sc-clearable", !required);
+            }
+            if (cfg.placeholder != null) input.placeholder = cfg.placeholder;
+            refresh();
+        }
+        // required đọc lại mỗi lần blur nên các nhánh dưới dùng biến, không dùng opts.required.
+        return { el: wrap, input, get value() { return value; }, set, configure };
     }
 
     // Biến một <select> có sẵn (render phía server) thành combobox chuẩn: hiện ô gõ-tìm, còn <select>
@@ -360,11 +400,17 @@ window.SearchCombobox = (function () {
     // (hoặc không có option rỗng) thì ô bắt buộc chọn. Tự áp cho mọi <select data-combobox>.
     const nativeValue = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value");
     const nativeIndex = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "selectedIndex");
-    function enhance(select) {
+    function enhance(select, extra) {
         if (select._combobox) return select._combobox;
+        extra = extra || {};
         const opts = () => Array.from(select.options);
-        const empty = opts().find((o) => o.value === "");
-        const required = select.required || !empty;
+        const wasRequired = select.required;   // select.required bị tắt bên dưới nên ghi nhớ ở đây
+        // Placeholder / bắt buộc suy ra từ option rỗng — đọc lại mỗi lần option đổi (select nạp bằng JS sau).
+        const emptyOpt = () => opts().find((o) => o.value === "");
+        const placeholderOf = () => { const e = emptyOpt(); return e ? e.text.trim().replace(/^-+\s*|\s*-+$/g, "") : ""; };
+        const requiredNow = () => wasRequired || !emptyOpt();
+        const maxOptions = Number(extra.maxOptions || select.dataset.maxOptions) || undefined;
+        const create = extra.create ?? (select.hasAttribute("data-create") ? true : undefined);
         const input = document.createElement("input");
         input.type = "text";
         input.className = select.className.replace(/\bform-select\b/g, "form-control").replace(/\bform-select-(sm|lg)\b/g, "form-control-$1");
@@ -373,22 +419,27 @@ window.SearchCombobox = (function () {
             document.querySelectorAll(`label[for="${select.id}"]`).forEach((l) => { l.htmlFor = input.id; });
         }
         const p = picker({
-            input, required, title: select.title || null,
-            placeholder: empty ? empty.text.trim().replace(/^-+\s*|\s*-+$/g, "") : "",
+            input, required: requiredNow(), title: select.title || null,
+            placeholder: placeholderOf(), maxOptions, create, onCreate: extra.onCreate,
             localItems: () => opts().filter((o) => o.value !== "").map((o) => ({ value: o.value, label: o.text.trim() })),
             value: select.value,
-            onChange: (v) => {
+            onChange: (v, it) => {
+                if (it && it.created && !opts().some((o) => o.value === v)) select.add(new Option(it.label, v));
                 nativeValue.set.call(select, v);
                 select.dispatchEvent(new Event("change", { bubbles: true }));
             },
         });
-        input.required = select.required;
+        input.required = wasRequired;
         select.required = false;           // select ẩn không nhận được focus khi trình duyệt báo thiếu
         input.disabled = select.disabled;
         select.hidden = true;
         select.after(p.el);
         // JS của trang gán .value / đổi option / reset form → ô hiển thị theo.
-        const sync = () => { input.disabled = select.disabled; p.set(nativeValue.get.call(select)); };
+        const sync = () => {
+            input.disabled = select.disabled;
+            p.configure({ required: requiredNow(), placeholder: placeholderOf() });
+            p.set(nativeValue.get.call(select));
+        };
         [["value", nativeValue], ["selectedIndex", nativeIndex]].forEach(([prop, native]) => {
             Object.defineProperty(select, prop, {
                 configurable: true,
@@ -397,13 +448,20 @@ window.SearchCombobox = (function () {
             });
         });
         select.addEventListener("change", sync);
-        new MutationObserver(sync).observe(select, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled", "selected"] });
+        new MutationObserver(sync).observe(select, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["disabled", "selected", "value", "label"] });
         if (select.form) select.form.addEventListener("reset", () => setTimeout(sync));
         sync();                            // select bị khóa sẵn → ẩn nút (x)
         select._combobox = p;
+        select._comboboxSync = sync;
         return p;
+    }
+    // Đọc lại option/placeholder/required/disabled của select đã enhance (select nạp option bằng JS).
+    function refresh(select) {
+        if (!select._combobox) return enhance(select);
+        select._comboboxSync();
+        return select._combobox;
     }
     document.querySelectorAll("select[data-combobox]").forEach(enhance);
 
-    return { attach, register, fromApi, stripVN, picker, enhance };
+    return { attach, register, fromApi, stripVN, picker, enhance, refresh };
 })();
