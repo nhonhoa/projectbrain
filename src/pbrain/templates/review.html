@@ -101,6 +101,13 @@ dialog td { padding: 3px 12px 3px 0; } kbd { background: var(--code); border-rad
 }
 #body table { border-collapse: collapse; margin: 8px 0; }
 #body th, #body td { border: 1px solid color-mix(in srgb, currentColor 22%, transparent); padding: 4px 8px; text-align: left; vertical-align: top; }
+#src { width: min(920px, 94vw); max-height: 88vh; padding: 0; }
+#src[open] { display: flex; flex-direction: column; }
+#srcHead { display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-bottom: 1px solid color-mix(in srgb, currentColor 18%, transparent); }
+#srcHead b { flex: 1; overflow-wrap: anywhere; }
+#srcBody { min-height: 0; overflow: auto; padding: 4px 18px 16px; }
+#srcBody .hit { background: color-mix(in srgb, #f5c400 30%, transparent); scroll-margin-top: 8px; }
+a.ref { text-decoration: underline dotted; }
 .anchor { text-decoration: none; opacity: .45; font-weight: 400; }
 .anchor:hover { opacity: 1; }
 .hint { margin: 6px 0 10px; opacity: .8; }
@@ -125,6 +132,7 @@ dialog td { padding: 3px 12px 3px 0; } kbd { background: var(--code); border-rad
   <div id="list"></div>
   <div id="detail"></div>
 </main>
+<dialog id="src"><div id="srcHead"></div><div id="srcBody" class="md"></div></dialog>
 <dialog id="help"><table id="helpRows"></table><form method="dialog"><button></button></form></dialog>
 <div id="toast"></div>
 <script>
@@ -139,6 +147,7 @@ const I18N = {
     hint_inbox: "A note waiting to be filed. Keep it as a new page, merge it into an existing page, or discard it.",
     hint_drift: "The code this page describes changed after the page was last checked. Confirm if the page is still right, or edit it.",
     hint_lint: "The page breaks a wiki convention. Edit it to fix the finding.",
+    srcJump: "Go to item no.", srcOpen: "Open the link", srcNone: "This source is not a file of an open project.",
     gone: "The linked item is no longer waiting (already handled).",
     nothing: "Nothing waiting", nothingSub: "No decisions are pending in this project.",
     approve: "Approve", confirm: "Confirm (still correct)", edit: "Edit", deprecate: "Deprecate",
@@ -159,6 +168,7 @@ const I18N = {
     hint_inbox: "Ghi chú đang chờ xếp chỗ. Giữ thành trang mới, gộp vào trang có sẵn, hoặc bỏ.",
     hint_drift: "Code mà trang này mô tả đã đổi sau lần kiểm gần nhất. Trang còn đúng thì Xác nhận, hết đúng thì Sửa.",
     hint_lint: "Trang vi phạm quy ước wiki. Bấm Sửa để chỉnh theo thông báo.",
+    srcJump: "Tới mục số", srcOpen: "Mở đường dẫn", srcNone: "Nguồn này không phải file của dự án đang mở.",
     gone: "Mục trong đường dẫn không còn chờ nữa (đã xử lý).",
     nothing: "Không còn gì chờ duyệt", nothingSub: "Dự án này không có quyết định nào đang chờ.",
     approve: "Duyệt", confirm: "Xác nhận (vẫn đúng)", edit: "Sửa", deprecate: "Ngừng dùng",
@@ -239,7 +249,7 @@ function markdown(text) {
     if (h) { flushPara(); flushList(); const n = Math.min(h[1].length + 1, 4); out.push("<h" + n + ">" + inline(h[2]) + "</h" + n + ">"); }
     else if (li) {
       flushPara(); const kind = /\d/.test(li[1]) ? "ol" : "ul";
-      if (list !== kind) { flushList(); out.push("<" + kind + ">"); list = kind; }
+      if (list !== kind) { flushList(); out.push("<" + kind + (kind === "ol" ? ' start="' + parseInt(li[1], 10) + '"' : "") + ">"); list = kind; }
       flushItem(); item = [li[2]];
     } else if (!line.trim()) { flushPara(); flushList(); }
     else if (item !== null) item.push(line.trim());
@@ -258,8 +268,99 @@ function renderPage(text) {
     if (kv) { key = kv[1]; rows.push([key, kv[2]]); }
     else if (it && rows.length) rows[rows.length - 1][1] += (rows[rows.length - 1][1] ? "\n" : "") + it[1];
   }
-  const table = rows.map(([k, v]) => "<tr><td>" + esc(k) + "</td><td>" + esc(v).replace(/\n/g, "<br>") + "</td></tr>").join("");
+  const refs = (k, v) => k === "sources" || k === "covers"
+    ? v.split("\n").filter(Boolean).map((r) => '<a href="#" data-src="' + esc(r) + '">' + esc(r) + "</a>").join("<br>")
+    : esc(v).replace(/\n/g, "<br>");
+  const table = rows.map(([k, v]) => "<tr><td>" + esc(k) + "</td><td>" + refs(k, v) + "</td></tr>").join("");
   return '<table class="fm">' + table + '</table><div class="md">' + markdown(m[2]) + "</div>";
+}
+
+/* ---------- source viewer ---------- */
+async function openSource(ref) {
+  const res = await api("/api/source?project=" + S.cur + "&ref=" + encodeURIComponent(ref));
+  const close = '<form method="dialog"><button>' + esc(t("close")) + "</button></form>";
+  if (!res.ok) {
+    $("srcHead").innerHTML = "<b>" + esc(ref) + "</b>" + close;
+    $("srcBody").innerHTML = "<p>" + esc(t("srcNone")) + "</p>" +
+      (res.url ? '<p><a href="' + esc(res.url) + '" target="_blank" rel="noopener noreferrer">' + esc(t("srcOpen")) + "</a></p>" : "");
+  } else {
+    $("srcHead").innerHTML = "<b>" + esc(res.project + " / " + res.path + (res.symbol ? " :: " + res.symbol : "")) + "</b>" +
+      (res.markdown ? "<label>" + esc(t("srcJump")) + ' <input id="srcJump" inputmode="numeric" size="4"></label>' : "") + close;
+    $("srcBody").innerHTML = res.markdown ? markdown(res.text) : "<pre><code>" + esc(res.text) + "</code></pre>";
+  }
+  if (!$("src").open) $("src").showModal();
+  $("srcBody").scrollTop = 0;
+}
+function jumpSource(label) {
+  const body = $("srcBody"), key = String(label).trim().replace(/\.$/, "");
+  if (!key) return;
+  const heads = [...body.querySelectorAll("h1,h2,h3,h4")];
+  let hit = heads.find((h) => { const s = h.textContent.trim(); return s.startsWith(key + ".") || s.startsWith(key + " "); });
+  if (!hit && /^\d+$/.test(key)) {
+    const n = +key;
+    for (const ol of body.querySelectorAll("ol")) {
+      const at = n - (ol.start || 1);
+      if (at >= 0 && at < ol.children.length) { hit = ol.children[at]; break; }
+    }
+  }
+  body.querySelectorAll(".hit").forEach((x) => x.classList.remove("hit"));
+  if (!hit) return;
+  hit.classList.add("hit");
+  body.scrollTop += hit.getBoundingClientRect().top - body.getBoundingClientRect().top - 8;
+}
+document.addEventListener("input", (e) => { if (e.target.id === "srcJump") jumpSource(e.target.value); });
+document.addEventListener("click", async (e) => {
+  const a = e.target.closest("[data-src]"); if (!a) return;
+  e.preventDefault();
+  await openSource(a.dataset.src);
+  if (a.dataset.jump) { const box = $("srcJump"); if (box) box.value = a.dataset.jump; jumpSource(a.dataset.jump); }
+});
+
+/* "mục 12, 13" / "item 4" in a page body become links into the page's sources. The file is
+   the nearest source named earlier in the same paragraph or list item, else the first source. */
+const REF_WORD = /\b(mục|muc|item|section|§)\s+(\d+(?:\.\d+)*(?:\s*(?:,|và|and|-)\s*\d+(?:\.\d+)*)*)/giu;
+function linkRefs(root, sources) {
+  if (!sources.length) return;
+  const base = (s) => s.split(/[\\/]/).pop().split("::")[0].toLowerCase();
+  const byName = new Map(sources.map((s) => [base(s), s]));
+  for (const block of root.querySelectorAll(".md li, .md p")) {
+    let current = sources[0];
+    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+    const nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes) {
+      if (node.parentElement.closest("li, p") !== block) continue;
+      const named = byName.get(node.textContent.trim().toLowerCase());
+      if (node.parentElement.tagName === "CODE") { if (named) current = named; continue; }
+      const text = node.textContent; REF_WORD.lastIndex = 0;
+      if (!REF_WORD.test(text)) continue;
+      const frag = document.createDocumentFragment(); let last = 0; REF_WORD.lastIndex = 0;
+      for (const m of text.matchAll(REF_WORD)) {
+        frag.append(text.slice(last, m.index) + m[1] + " ");
+        const numbers = m[2]; let pos = 0;
+        for (const n of numbers.matchAll(/\d+(?:\.\d+)*/g)) {
+          frag.append(numbers.slice(pos, n.index));
+          const a = document.createElement("a");
+          a.href = "#"; a.textContent = n[0]; a.className = "ref";
+          a.dataset.src = current; a.dataset.jump = n[0];
+          a.title = base(current) + " · " + n[0];
+          frag.append(a); pos = n.index + n[0].length;
+        }
+        frag.append(numbers.slice(pos)); last = m.index + m[0].length;
+      }
+      frag.append(text.slice(last));
+      node.replaceWith(frag);
+    }
+  }
+}
+function pageSources(text) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text || ""); if (!m) return [];
+  const out = []; let inSources = false;
+  for (const line of m[1].split(/\r?\n/)) {
+    if (/^[A-Za-z_]+:/.test(line)) { inSources = line.startsWith("sources:"); continue; }
+    const it = /^\s*-\s+(.*)$/.exec(line);
+    if (inSources && it) out.push(it[1].trim());
+  }
+  return out;
 }
 
 /* ---------- data ---------- */
@@ -374,6 +475,7 @@ async function renderDetail() {
   let extra = "";
   if (S.diff) extra = '<pre class="diff">' + esc(S.diff) + "</pre>";
   $("body").innerHTML = (res.ok ? extra + renderPage(res.text) : '<div class="msg bad">' + esc(res.message) + "</div>");
+  if (res.ok) linkRefs($("body"), pageSources(res.text));
 }
 function actionsHtml(item) {
   const b = (a, label, cls) => '<button data-act="' + a + '"' + (cls ? ' class="' + cls + '"' : "") + ">" + t(label) + "</button>";
@@ -477,7 +579,7 @@ document.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const tag = (e.target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea" || tag === "select") return;
-  if ($("help").open) return;
+  if ($("help").open || $("src").open) return;
   const k = e.key, item = current();
   if (k === "j" || k === "ArrowDown") { e.preventDefault(); move(1); }
   else if (k === "k" || k === "ArrowUp") { e.preventDefault(); move(-1); }

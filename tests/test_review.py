@@ -235,6 +235,32 @@ def test_commit_only_wiki_files(tmp_path, helpers):
     assert staged == ["other.txt"]
 
 
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_read_source_only_tracked_files(tmp_path, helpers):
+    helpers.init_repo(tmp_path)
+    raw(tmp_path / "pbrain.toml", 'project = "demo"\n')
+    raw(tmp_path / "docs" / "rules.md", "1. first\n")
+    raw(tmp_path / "app.py", "def total():\n    return 1\n\n\ndef other():\n    return 2\n")
+    helpers.commit_all(tmp_path)
+    raw(tmp_path / "secret.txt", "untracked\n")
+    helpers.git(tmp_path, "remote", "add", "origin", "https://github.com/Someone/Demo.git")
+    config = load(tmp_path)
+
+    found = review.read_source([config], config, "docs/rules.md")
+    assert found["markdown"] and found["text"] == "1. first\n" and found["path"] == "docs/rules.md"
+    part = review.read_source([config], config, "app.py::total")
+    assert part["symbol"] == "total" and "other" not in part["text"]
+    url = "https://github.com/someone/demo/blob/main/docs/rules.md"
+    assert review.read_source([config], config, url)["path"] == "docs/rules.md"
+
+    for bad in ("secret.txt", "../outside.md", "nope.md"):
+        with pytest.raises(review.ReviewError):
+            review.read_source([config], config, bad)
+    with pytest.raises(review.ReviewError) as caught:
+        review.read_source([config], config, "https://github.com/other/repo/blob/main/x.md")
+    assert caught.value.extra["url"].startswith("https://github.com/other/repo")
+
+
 def test_load_projects_dedup_and_bad_root(cfg, tmp_path):
     assert len(review.load_projects(cfg, [str(cfg.root), str(cfg.root)])) == 1
     empty = tmp_path / "empty"

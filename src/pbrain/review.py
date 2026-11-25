@@ -22,7 +22,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from . import config as config_module
 from . import wiki
@@ -58,7 +58,7 @@ def _inside(base: Path, relative: str, suffix=".md") -> Path:
         path.relative_to(base.resolve())
     except ValueError:
         raise ReviewError(f"path outside the wiki: {raw}") from None
-    if path.suffix.lower() != suffix:
+    if suffix and path.suffix.lower() != suffix:
         raise ReviewError(f"not a {suffix} file: {raw}")
     return path
 
@@ -411,6 +411,60 @@ def inbox_append(config, file, heading, page, section) -> dict:
     return {"message": f"Appended to {target.name} / {wanted}"}
 
 
+# ---------------------------------------------------------------- sources
+
+GITHUB_BLOB = re.compile(r"^https?://github\.com/([^/]+)/([^/]+)/blob/[^/]+/([^?#]+)")
+MAX_SOURCE = 1024 * 1024
+
+
+def _remote_slug(config) -> str:
+    """``owner/repo`` of the project's origin remote, lower case; empty when unknown."""
+    code, out = _run_git(config, "remote", "get-url", "origin")
+    found = re.search(r"[:/]([^/:@]+)/([^/]+?)(?:\.git)?/?$", out.strip()) if code == 0 else None
+    return f"{found.group(1)}/{found.group(2)}".lower() if found else ""
+
+
+def read_source(configs, config, ref) -> dict:
+    """The text behind a ``sources``/``covers`` entry, when it is a tracked file of an open project.
+
+    A GitHub blob URL is mapped to the open project whose origin is that repository. Only files
+    tracked by git are served, so ignored files (secrets, local data) stay out of reach.
+    """
+    ref = str(ref or "").strip()
+    target, _, symbol = ref.partition("::")
+    candidates = [config, *[c for c in configs if c is not config]]
+    blob = GITHUB_BLOB.match(target)
+    if blob:
+        slug = f"{blob.group(1)}/{blob.group(2)}".lower()
+        candidates = [c for c in candidates if _remote_slug(c) == slug]
+        rel = unquote(blob.group(3))
+    elif re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", target):
+        candidates, rel = [], ""
+    else:
+        rel = target
+    for candidate in candidates:
+        try:
+            path = _inside(candidate.root, rel, suffix=None)
+        except ReviewError:
+            continue
+        if not path.is_file() or path.stat().st_size > MAX_SOURCE:
+            continue
+        posix = path.relative_to(candidate.root.resolve()).as_posix()
+        if _run_git(candidate, "ls-files", "--error-unmatch", "--", posix)[0] != 0:
+            continue
+        text = _read(path)
+        part = wiki.symbol_source(text, symbol) if symbol and path.suffix == ".py" else None
+        return {
+            "project": candidate.project,
+            "path": posix,
+            "symbol": symbol if part else "",
+            "text": part or text,
+            "markdown": path.suffix.lower() in (".md", ".markdown"),
+        }
+    url = target if re.match(r"^https?://", target) else ""
+    raise ReviewError(f"not a tracked file of an open project: {target}", 404, url=url)
+
+
 # ---------------------------------------------------------------- git
 
 
@@ -619,6 +673,10 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, **queue_payload(config)})
         if route == "/api/page":
             return self._json(200, {"ok": True, **read_page(config, page)})
+        if route == "/api/source":
+            ref = (query.get("ref") or [""])[0]
+            found = read_source(self.server.configs, config, ref)
+            return self._json(200, {"ok": True, **found})
         if route == "/api/diff":
             return self._json(200, {"ok": True, "diff": page_diff(config, page)})
         raise ReviewError("not found", 404)
