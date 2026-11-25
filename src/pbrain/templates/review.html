@@ -101,6 +101,8 @@ dialog td { padding: 3px 12px 3px 0; } kbd { background: var(--code); border-rad
 }
 #body table { border-collapse: collapse; margin: 8px 0; }
 #body th, #body td { border: 1px solid color-mix(in srgb, currentColor 22%, transparent); padding: 4px 8px; text-align: left; vertical-align: top; }
+.anchor { text-decoration: none; opacity: .45; font-weight: 400; }
+.anchor:hover { opacity: 1; }
 .hint { margin: 6px 0 10px; opacity: .8; }
 </style>
 </head>
@@ -137,6 +139,7 @@ const I18N = {
     hint_inbox: "A note waiting to be filed. Keep it as a new page, merge it into an existing page, or discard it.",
     hint_drift: "The code this page describes changed after the page was last checked. Confirm if the page is still right, or edit it.",
     hint_lint: "The page breaks a wiki convention. Edit it to fix the finding.",
+    gone: "The linked item is no longer waiting (already handled).",
     nothing: "Nothing waiting", nothingSub: "No decisions are pending in this project.",
     approve: "Approve", confirm: "Confirm (still correct)", edit: "Edit", deprecate: "Deprecate",
     newPage: "New page", append: "Append to...", discard: "Discard", showDiff: "Show diff",
@@ -156,6 +159,7 @@ const I18N = {
     hint_inbox: "Ghi chú đang chờ xếp chỗ. Giữ thành trang mới, gộp vào trang có sẵn, hoặc bỏ.",
     hint_drift: "Code mà trang này mô tả đã đổi sau lần kiểm gần nhất. Trang còn đúng thì Xác nhận, hết đúng thì Sửa.",
     hint_lint: "Trang vi phạm quy ước wiki. Bấm Sửa để chỉnh theo thông báo.",
+    gone: "Mục trong đường dẫn không còn chờ nữa (đã xử lý).",
     nothing: "Không còn gì chờ duyệt", nothingSub: "Dự án này không có quyết định nào đang chờ.",
     approve: "Duyệt", confirm: "Xác nhận (vẫn đúng)", edit: "Sửa", deprecate: "Ngừng dùng",
     newPage: "Trang mới", append: "Gộp vào...", discard: "Bỏ", showDiff: "Xem diff",
@@ -266,10 +270,36 @@ function visible() {
 }
 function current() { return visible().find((i) => i.id === S.sel) || null; }
 
+/* The address bar names the open item as #<project>/<item id>, so a link can be shared. */
+function hashFor(id) {
+  const p = S.projects[S.cur];
+  return p && id ? "#" + encodeURIComponent(p.name) + "/" + encodeURIComponent(id) : "";
+}
+function readHash() {
+  const raw = location.hash.slice(1), cut = raw.indexOf("/");
+  if (cut < 1) return null;
+  try { return { name: decodeURIComponent(raw.slice(0, cut)), id: decodeURIComponent(raw.slice(cut + 1)) }; }
+  catch (e) { return null; }
+}
+function applyHash(final) {
+  if (!S.want) return;
+  const idx = S.projects.findIndex((p) => p.name === S.want.name);
+  const d = S.data[idx];
+  if (d && d.items && d.items.find((x) => x.id === S.want.id)) {
+    S.cur = idx; S.kind = null; S.sel = S.want.id; S.want = null;
+    S.editing = S.panel = S.diff = S.note = null;
+  } else if (final || idx < 0 || d) { S.want = null; toast(t("gone")); }
+}
+function syncHash() {
+  if (S.want) return;
+  const h = hashFor(S.sel);
+  if (h !== location.hash) history.replaceState(null, "", h || location.pathname + location.search);
+}
 async function loadProject(i, keepSel) {
   const res = await api("/api/queue?project=" + i);
   if (!res.ok) { toast(t("error") + ": " + res.message); return; }
   S.data[i] = res;
+  applyHash(false);
   if (i === S.cur && !keepSel) selectFirstIfNone();
   render();
 }
@@ -281,12 +311,20 @@ function selectFirstIfNone() {
 async function init() {
   const res = await api("/api/projects");
   S.projects = res.projects || [];
+  S.want = readHash();
   await loadProject(0);
   for (let i = 1; i < S.projects.length; i++) await loadProject(i);
+  applyHash(true); render();
 }
+window.addEventListener("hashchange", () => {
+  const want = readHash();
+  if (!want || location.hash === hashFor(S.sel)) return;
+  S.want = want; applyHash(true); selectFirstIfNone(); render();
+});
 
 /* ---------- render ---------- */
 function render() {
+  syncHash();
   document.documentElement.lang = lang;
   $("langBtn").textContent = t("lang");
   const d = proj();
@@ -320,7 +358,7 @@ async function renderDetail() {
     el.innerHTML = '<div id="empty"><b>' + t("nothing") + "</b>" + t("nothingSub") + "</div>"; return;
   }
   const token = (renderDetail.n = (renderDetail.n || 0) + 1);
-  let html = "<h2>" + esc(item.title) + '</h2><div class="sub"><span class="badge ' + (item.kind === "lint" ? item.severity : item.kind) + '">' +
+  let html = "<h2>" + esc(item.title) + ' <a class="anchor" href="' + esc(hashFor(item.id)) + '">#</a></h2><div class="sub"><span class="badge ' + (item.kind === "lint" ? item.severity : item.kind) + '">' +
     esc(item.kind) + "</span>" + esc(item.page || "") + "</div>";
   html += '<div class="hint">' + esc(t("hint_" + item.kind)) + "</div>";
   if (item.kind !== "inbox") html += '<div class="msg">' + esc(item.detail) + "</div>";
