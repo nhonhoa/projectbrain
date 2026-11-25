@@ -22,6 +22,7 @@ COMMAND_MODULES = (
     "pbrain.check",
     "pbrain.ecosystem",
     "pbrain.hooks",
+    "pbrain.review",
 )
 
 

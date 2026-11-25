@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pbrain review</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9; --panel: #fff; --text: #1d2125; --muted: #6b7480; --line: #dde1e6;
+  --accent: #2563eb; --accent-text: #fff; --ok: #15803d; --warn: #b45309; --bad: #b91c1c;
+  --code: #eef0f3;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171a; --panel: #1c2024; --text: #e6e8eb; --muted: #98a1ac; --line: #2e343a;
+    --accent: #5b8cff; --accent-text: #0b1020; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    --code: #262b30;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text); display: flex; flex-direction: column;
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+button, select, input, textarea { font: inherit; color: inherit; }
+button {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 11px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+button.danger { color: var(--bad); }
+button:disabled { opacity: .5; cursor: default; }
+input, select, textarea {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px;
+}
+header {
+  display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 8px 14px;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.tabs, .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tab, .chip { border-radius: 999px; padding: 3px 11px; background: transparent; }
+.tab.on, .chip.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.spacer { flex: 1; }
+main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(260px, 380px) 1fr; }
+#list { overflow: auto; border-right: 1px solid var(--line); background: var(--panel); }
+#detail { overflow: auto; padding: 16px 20px; }
+.item {
+  display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line);
+  border-radius: 0; padding: 9px 12px; background: transparent;
+}
+.item.sel { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.item .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .d { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge {
+  display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase;
+  padding: 1px 7px; border-radius: 4px; margin-right: 6px; background: var(--code); color: var(--muted);
+}
+.badge.error { color: var(--bad); } .badge.warning, .badge.drift { color: var(--warn); }
+.badge.inbox { color: var(--accent); } .badge.trust { color: var(--ok); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; align-items: center; }
+.form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; padding: 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.msg { margin: 8px 0; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); }
+.msg.bad { border-color: var(--bad); color: var(--bad); }
+h2 { margin: 0 0 4px; font-size: 18px; }
+.sub { color: var(--muted); margin-bottom: 8px; word-break: break-word; }
+table.fm { border-collapse: collapse; margin: 8px 0 14px; font-size: 13px; }
+table.fm td { padding: 2px 12px 2px 0; vertical-align: top; }
+table.fm td:first-child { color: var(--muted); }
+.md h1, .md h2, .md h3, .md h4 { margin: 14px 0 6px; font-size: 16px; }
+.md p { margin: 6px 0; } .md ul, .md ol { margin: 6px 0; padding-left: 22px; }
+.md code { background: var(--code); padding: 1px 4px; border-radius: 4px; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+.md pre { background: var(--code); padding: 10px; border-radius: 6px; overflow: auto; }
+.md pre code { padding: 0; background: none; }
+.md a { color: var(--accent); }
+pre.diff { background: var(--code); padding: 10px; border-radius: 6px; overflow: auto; font-size: 12px; max-height: 60vh; }
+textarea.edit { width: 100%; min-height: 55vh; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+#empty { text-align: center; color: var(--muted); padding: 60px 20px; }
+#empty b { display: block; font-size: 20px; color: var(--ok); margin-bottom: 6px; }
+#toast {
+  position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text);
+  color: var(--bg); padding: 8px 14px; border-radius: 6px; opacity: 0; transition: opacity .2s; pointer-events: none;
+}
+#toast.show { opacity: .95; }
+#commitbox {
+  position: absolute; right: 14px; top: 48px; width: min(460px, 94vw); z-index: 5;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.25);
+}
+#commitbox textarea { width: 100%; }
+#commitbox pre { max-height: 160px; overflow: auto; font-size: 12px; background: var(--code); padding: 6px; border-radius: 6px; margin: 6px 0; }
+dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; }
+dialog td { padding: 3px 12px 3px 0; } kbd { background: var(--code); border-radius: 4px; padding: 0 5px; }
+.hidden { display: none !important; }
+@media (max-width: 800px) {
+  main { grid-template-columns: 1fr; grid-template-rows: minmax(120px, 38vh) 1fr; }
+  #list { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="tabs" id="tabs"></div>
+  <div class="chips" id="chips"></div>
+  <span class="spacer"></span>
+  <button id="commitBtn"></button>
+  <button id="langBtn" title="Language"></button>
+  <button id="helpBtn">?</button>
+</header>
+<div id="commitbox" class="hidden">
+  <div class="sub" id="commitFiles"></div>
+  <textarea id="commitMsg" rows="2"></textarea>
+  <div class="actions"><button class="primary" id="commitGo"></button><button id="commitClose"></button></div>
+  <pre id="commitOut" class="hidden"></pre>
+</div>
+<main>
+  <div id="list"></div>
+  <div id="detail"></div>
+</main>
+<dialog id="help"><table id="helpRows"></table><form method="dialog"><button></button></form></dialog>
+<div id="toast"></div>
+<script>
+"use strict";
+const TOKEN = "__PBRAIN_TOKEN__";
+const I18N = {
+  en: {
+    all: "All", lint: "Lint", drift: "Drift", inbox: "Inbox", trust: "Trust",
+    changed: "Changed files", commit: "Commit", commitMsg: "docs(wiki): review decisions",
+    commitHint: "Only files under the wiki directory are committed. Nothing is pushed.",
+    nothing: "Nothing waiting", nothingSub: "No decisions are pending in this project.",
+    approve: "Approve", confirm: "Confirm (still correct)", edit: "Edit", deprecate: "Deprecate",
+    newPage: "New page", append: "Append to...", discard: "Discard", showDiff: "Show diff",
+    name: "Name", title: "Title", type: "Type", trustL: "Trust", page: "Page", section: "Section",
+    create: "Create", add: "Append", save: "Save", cancel: "Cancel", close: "Close",
+    saved: "Saved", conflict: "The file changed on disk since you opened it. Cancel and reopen.",
+    sure: "Are you sure?", loading: "Loading...", error: "Error", noFiles: "No changed files.",
+    sKeys: "Keyboard shortcuts", kMove: "Next / previous item", kApprove: "Approve / confirm",
+    kEdit: "Edit", kDel: "Discard / deprecate", kHelp: "This help", lang: "VI",
+    covers: "Covers", inboxFrom: "Inbox file", pending: "pending", fail: "Request failed"
+  },
+  vi: {
+    all: "Tất cả", lint: "Lint", drift: "Lệch code", inbox: "Hộp thư", trust: "Độ tin cậy",
+    changed: "File thay đổi", commit: "Commit", commitMsg: "docs(wiki): duyệt quyết định",
+    commitHint: "Chỉ commit các file trong thư mục wiki. Không push.",
+    nothing: "Không còn gì chờ duyệt", nothingSub: "Dự án này không có quyết định nào đang chờ.",
+    approve: "Duyệt", confirm: "Xác nhận (vẫn đúng)", edit: "Sửa", deprecate: "Ngừng dùng",
+    newPage: "Trang mới", append: "Gộp vào...", discard: "Bỏ", showDiff: "Xem diff",
+    name: "Tên", title: "Tiêu đề", type: "Loại", trustL: "Độ tin cậy", page: "Trang", section: "Mục",
+    create: "Tạo", add: "Gộp", save: "Lưu", cancel: "Hủy", close: "Đóng",
+    saved: "Đã lưu", conflict: "File đã đổi trên đĩa kể từ khi bạn mở. Hãy hủy và mở lại.",
+    sure: "Bạn chắc chắn chứ?", loading: "Đang tải...", error: "Lỗi", noFiles: "Không có file thay đổi.",
+    sKeys: "Phím tắt", kMove: "Mục kế / mục trước", kApprove: "Duyệt / xác nhận",
+    kEdit: "Sửa", kDel: "Bỏ / ngừng dùng", kHelp: "Trợ giúp này", lang: "EN",
+    covers: "Bao phủ", inboxFrom: "File hộp thư", pending: "đang chờ", fail: "Yêu cầu thất bại"
+  }
+};
+const TYPES = ["concept", "feature", "rule", "decision", "contract", "gotcha"];
+const TRUSTS = ["agreed", "requested", "inferred"];
+const KINDS = ["lint", "drift", "inbox", "trust"];
+let lang = localStorage.getItem("pbrain.lang") || (/^vi/i.test(navigator.language) ? "vi" : "en");
+const t = (k) => (I18N[lang] && I18N[lang][k]) || I18N.en[k] || k;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+const S = { projects: [], cur: 0, data: {}, kind: null, sel: null, editing: null, panel: null, diff: null, note: null };
+
+async function api(path, body) {
+  const opt = body === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json", "X-Pbrain-Token": TOKEN },
+    body: JSON.stringify(body)
+  };
+  let res, data;
+  try { res = await fetch(path, opt); data = await res.json(); }
+  catch (e) { return { ok: false, message: t("fail") + ": " + e }; }
+  data.status = res.status;
+  return data;
+}
+
+function toast(text) {
+  const el = $("toast"); el.textContent = text; el.classList.add("show");
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => el.classList.remove("show"), 2600);
+}
+
+/* ---------- markdown (escape first, then a small subset) ---------- */
+function inline(raw) {
+  const codes = [];
+  let s = esc(raw).replace(/`([^`]+)`/g, (_, c) => { codes.push(c); return "\u0000" + (codes.length - 1) + "\u0000"; });
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, text, url) => {
+    const safe = /^(https?:\/\/|[\w./#-][^:]*$)/i.test(url) && !/^\s*javascript/i.test(url);
+    return safe ? '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + text + "</a>" : m;
+  });
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/(^|[^\w*])\*([^*\s][^*]*)\*/g, "$1<i>$2</i>")
+       .replace(/(^|[^\w])_([^_\s][^_]*)_(?!\w)/g, "$1<i>$2</i>");
+  return s.replace(/\u0000(\d+)\u0000/g, (_, n) => "<code>" + codes[+n] + "</code>");
+}
+function markdown(text) {
+  const out = []; let list = null, para = [], fence = null, item = null;
+  const flushPara = () => { if (para.length) out.push("<p>" + inline(para.join(" ")) + "</p>"); para = []; };
+  const flushItem = () => { if (item !== null) out.push("<li>" + inline(item.join(" ")) + "</li>"); item = null; };
+  const flushList = () => { flushItem(); if (list) { out.push("</" + list + ">"); list = null; } };
+  for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
+    if (fence !== null) {
+      if (/^\s*(```|~~~)/.test(line)) { out.push("<pre><code>" + esc(fence.join("\n")) + "</code></pre>"); fence = null; }
+      else fence.push(line);
+      continue;
+    }
+    if (/^\s*(```|~~~)/.test(line)) { flushPara(); flushList(); fence = []; continue; }
+    const h = /^(#{1,6})\s+(.*)$/.exec(line);
+    const li = /^\s*([-*+]|\d+\.)\s+(.*)$/.exec(line);
+    if (h) { flushPara(); flushList(); const n = Math.min(h[1].length + 1, 4); out.push("<h" + n + ">" + inline(h[2]) + "</h" + n + ">"); }
+    else if (li) {
+      flushPara(); const kind = /\d/.test(li[1]) ? "ol" : "ul";
+      if (list !== kind) { flushList(); out.push("<" + kind + ">"); list = kind; }
+      flushItem(); item = [li[2]];
+    } else if (!line.trim()) { flushPara(); flushList(); }
+    else if (item !== null) item.push(line.trim());
+    else { flushList(); para.push(line.trim()); }
+  }
+  if (fence !== null) out.push("<pre><code>" + esc(fence.join("\n")) + "</code></pre>");
+  flushPara(); flushList();
+  return out.join("\n");
+}
+function renderPage(text) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text);
+  if (!m) return '<div class="md">' + markdown(text) + "</div>";
+  const rows = []; let key = null;
+  for (const line of m[1].split(/\r?\n/)) {
+    const kv = /^([A-Za-z_]+):\s*(.*)$/.exec(line), it = /^\s*-\s+(.*)$/.exec(line);
+    if (kv) { key = kv[1]; rows.push([key, kv[2]]); }
+    else if (it && rows.length) rows[rows.length - 1][1] += (rows[rows.length - 1][1] ? "\n" : "") + it[1];
+  }
+  const table = rows.map(([k, v]) => "<tr><td>" + esc(k) + "</td><td>" + esc(v).replace(/\n/g, "<br>") + "</td></tr>").join("");
+  return '<table class="fm">' + table + '</table><div class="md">' + markdown(m[2]) + "</div>";
+}
+
+/* ---------- data ---------- */
+const proj = () => S.data[S.cur];
+function visible() {
+  const d = proj(); if (!d || !d.items) return [];
+  return d.items.filter((i) => !S.kind || i.kind === S.kind);
+}
+function current() { return visible().find((i) => i.id === S.sel) || null; }
+
+async function loadProject(i, keepSel) {
+  const res = await api("/api/queue?project=" + i);
+  if (!res.ok) { toast(t("error") + ": " + res.message); return; }
+  S.data[i] = res;
+  if (i === S.cur && !keepSel) selectFirstIfNone();
+  render();
+}
+function selectFirstIfNone() {
+  const list = visible();
+  if (!list.find((x) => x.id === S.sel)) S.sel = list.length ? list[0].id : null;
+  S.editing = S.panel = S.diff = S.note = null;
+}
+async function init() {
+  const res = await api("/api/projects");
+  S.projects = res.projects || [];
+  await loadProject(0);
+  for (let i = 1; i < S.projects.length; i++) await loadProject(i);
+}
+
+/* ---------- render ---------- */
+function render() {
+  document.documentElement.lang = lang;
+  $("langBtn").textContent = t("lang");
+  const d = proj();
+  $("tabs").innerHTML = S.projects.map((p) => {
+    const n = S.data[p.index] ? S.data[p.index].total : "…";
+    return '<button class="tab' + (p.index === S.cur ? " on" : "") + '" data-tab="' + p.index + '" title="' + esc(p.root) + '">' + esc(p.name) + " " + n + "</button>";
+  }).join("");
+  const counts = d ? d.counts : {};
+  $("chips").innerHTML = [null, ...KINDS].map((k) => {
+    const n = k ? counts[k] || 0 : d ? d.total : 0;
+    return '<button class="chip' + (S.kind === k ? " on" : "") + '" data-kind="' + (k || "") + '">' + t(k || "all") + " " + n + "</button>";
+  }).join("");
+  const changes = d ? d.git_changes : [];
+  $("commitBtn").textContent = t("changed") + ": " + changes.length + " — " + t("commit");
+  renderList(); renderDetail();
+}
+function renderList() {
+  const list = visible(), el = $("list");
+  if (!proj()) { el.innerHTML = '<div id="empty">' + t("loading") + "</div>"; return; }
+  el.innerHTML = list.map((i) => {
+    const cls = i.kind === "lint" ? i.severity : i.kind;
+    return '<button class="item' + (i.id === S.sel ? " sel" : "") + '" data-id="' + esc(i.id) + '"><div class="t"><span class="badge ' + cls + '">' +
+      esc(i.kind === "lint" ? i.severity : i.kind) + "</span>" + esc(i.title) + '</div><div class="d">' + esc(i.detail) + "</div></button>";
+  }).join("");
+  const sel = el.querySelector(".sel"); if (sel) sel.scrollIntoView({ block: "nearest" });
+}
+async function renderDetail() {
+  const el = $("detail"), item = current();
+  if (!proj()) { el.innerHTML = ""; return; }
+  if (!item) {
+    el.innerHTML = '<div id="empty"><b>' + t("nothing") + "</b>" + t("nothingSub") + "</div>"; return;
+  }
+  const token = (renderDetail.n = (renderDetail.n || 0) + 1);
+  let html = "<h2>" + esc(item.title) + '</h2><div class="sub"><span class="badge ' + (item.kind === "lint" ? item.severity : item.kind) + '">' +
+    esc(item.kind) + "</span>" + esc(item.page || "") + "</div>";
+  if (item.kind !== "inbox") html += '<div class="msg">' + esc(item.detail) + "</div>";
+  if (S.note) html += '<div class="msg ' + (S.note.bad ? "bad" : "") + '">' + esc(S.note.text) + "</div>";
+  html += actionsHtml(item);
+  html += '<div id="panel"></div><div id="body">' + t("loading") + "</div>";
+  el.innerHTML = html;
+  wirePanel(item);
+  if (item.kind === "inbox") { $("body").innerHTML = '<div class="md">' + markdown(item.body) + "</div>"; return; }
+  if (S.editing) return showEditor(item);
+  const res = await api("/api/page?project=" + S.cur + "&page=" + encodeURIComponent(item.page));
+  if (token !== renderDetail.n || !$("body")) return;
+  let extra = "";
+  if (S.diff) extra = '<pre class="diff">' + esc(S.diff) + "</pre>";
+  $("body").innerHTML = (res.ok ? extra + renderPage(res.text) : '<div class="msg bad">' + esc(res.message) + "</div>");
+}
+function actionsHtml(item) {
+  const b = (a, label, cls) => '<button data-act="' + a + '"' + (cls ? ' class="' + cls + '"' : "") + ">" + t(label) + "</button>";
+  let h = '<div class="actions">';
+  if (item.kind === "trust") h += b("approve", "approve", "primary") + b("edit", "edit") + b("deprecate", "deprecate", "danger");
+  else if (item.kind === "inbox") h += b("newpage", "newPage", "primary") + b("append", "append") + b("discard", "discard", "danger");
+  else if (item.kind === "drift") h += b("confirm", "confirm", "primary") + b("diff", "showDiff") + b("edit", "edit");
+  else h += b("edit", "edit");
+  return h + "</div>";
+}
+const opts = (list, sel) => list.map((v) => '<option' + (v === sel ? " selected" : "") + ">" + esc(v) + "</option>").join("");
+function wirePanel(item) {
+  const el = $("panel");
+  if (S.panel === "newpage") {
+    el.innerHTML = '<div class="form"><label>' + t("name") + ' <input id="fName"></label><label>' + t("title") + ' <input id="fTitle"></label>' +
+      "<label>" + t("type") + ' <select id="fType">' + opts(TYPES, "concept") + "</select></label><label>" + t("trustL") +
+      ' <select id="fTrust">' + opts(TRUSTS, "inferred") + '</select></label><button class="primary" id="fGo">' + t("create") + "</button></div>";
+    $("fName").value = item.heading; $("fTitle").value = item.heading; $("fName").focus();
+    $("fGo").onclick = () => act("inbox_to_page", { file: item.file, heading: item.heading, name: $("fName").value,
+      title: $("fTitle").value, type: $("fType").value, trust: $("fTrust").value });
+  } else if (S.panel === "append") {
+    const pages = proj().pages;
+    el.innerHTML = '<div class="form"><label>' + t("page") + ' <select id="fPage">' + opts(pages) + "</select></label><label>" + t("section") +
+      ' <select id="fSec"></select></label><button class="primary" id="fGo">' + t("add") + "</button></div>";
+    const fill = async () => {
+      const res = await api("/api/page?project=" + S.cur + "&page=" + encodeURIComponent($("fPage").value));
+      const heads = res.ok ? res.text.split(/\r?\n/).filter((l) => /^## /.test(l)) : [];
+      $("fSec").innerHTML = opts(heads);
+    };
+    $("fPage").onchange = fill; fill();
+    $("fGo").onclick = () => act("inbox_append", { file: item.file, heading: item.heading, page: $("fPage").value, section: $("fSec").value });
+  }
+}
+async function showEditor(item) {
+  const res = await api("/api/page?project=" + S.cur + "&page=" + encodeURIComponent(item.page));
+  if (!res.ok) { $("body").innerHTML = '<div class="msg bad">' + esc(res.message) + "</div>"; return; }
+  $("body").innerHTML = '<textarea class="edit" id="editor" spellcheck="false"></textarea><div class="actions"><button class="primary" id="eSave">' +
+    t("save") + '</button><button id="eCancel">' + t("cancel") + "</button></div>";
+  $("editor").value = res.text; $("editor").focus();
+  $("eCancel").onclick = () => { S.editing = null; renderDetail(); };
+  $("eSave").onclick = async () => {
+    const r = await api("/api/action", { project: S.cur, action: "save_page", page: item.page, text: $("editor").value, sha: res.sha });
+    if (r.ok) { toast(t("saved")); S.editing = null; await reload(); }
+    else S.note = { bad: true, text: r.conflict ? t("conflict") : r.message }, renderDetailNote();
+  };
+}
+function renderDetailNote() {
+  const old = document.querySelector("#detail .msg.bad"); if (old) old.remove();
+  const box = document.createElement("div"); box.className = "msg bad"; box.textContent = S.note.text;
+  $("detail").insertBefore(box, $("detail").children[2]);
+}
+
+/* ---------- actions ---------- */
+async function reload() { await loadProject(S.cur, true); const l = visible(); if (!l.find((x) => x.id === S.sel)) selectFirstIfNone(); render(); }
+async function act(action, extra) {
+  const before = visible(), idx = before.findIndex((x) => x.id === S.sel);
+  const res = await api("/api/action", Object.assign({ project: S.cur, action }, extra));
+  if (!res.ok) { S.note = { bad: true, text: res.message }; renderDetail(); return; }
+  toast(res.message);
+  S.panel = S.diff = S.note = S.editing = null;
+  await loadProject(S.cur, true);
+  const after = visible();
+  if (!after.find((x) => x.id === S.sel)) { S.sel = after.length ? after[Math.min(idx, after.length - 1)].id : null; }
+  render();
+}
+function move(delta) {
+  const list = visible(); if (!list.length) return;
+  const i = Math.max(0, Math.min(list.length - 1, list.findIndex((x) => x.id === S.sel) + delta));
+  S.sel = list[i].id; S.editing = S.panel = S.diff = S.note = null; render();
+}
+function approve(item) {
+  if (item.kind === "trust") act("set_trust", { page: item.page, trust: "agreed" });
+  else if (item.kind === "drift") act("confirm", { page: item.page });
+}
+function remove(item) {
+  if (item.kind === "trust") { if (confirm(t("sure"))) act("set_status", { page: item.page, status: "deprecated" }); }
+  else if (item.kind === "inbox") { if (confirm(t("sure"))) act("inbox_discard", { file: item.file, heading: item.heading }); }
+}
+async function showDiff(item) {
+  const res = await api("/api/diff?project=" + S.cur + "&page=" + encodeURIComponent(item.page));
+  S.diff = res.ok ? res.diff : res.message; renderDetail();
+}
+function doAction(name) {
+  const item = current(); if (!item) return;
+  if (name === "approve" || name === "confirm") approve(item);
+  else if (name === "edit") { S.editing = true; renderDetail(); }
+  else if (name === "deprecate" || name === "discard") remove(item);
+  else if (name === "diff") showDiff(item);
+  else if (name === "newpage" || name === "append") { S.panel = S.panel === name ? null : name; renderDetail(); }
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click", (e) => {
+  const tgt = e.target.closest("[data-tab],[data-kind],[data-id],[data-act]"); if (!tgt) return;
+  if (tgt.dataset.tab !== undefined) { S.cur = +tgt.dataset.tab; S.sel = null; S.kind = null; selectFirstIfNone(); render(); if (!S.data[S.cur]) loadProject(S.cur); }
+  else if (tgt.dataset.kind !== undefined) { S.kind = tgt.dataset.kind || null; S.sel = null; selectFirstIfNone(); render(); }
+  else if (tgt.dataset.id !== undefined) { S.sel = tgt.dataset.id; S.editing = S.panel = S.diff = S.note = null; render(); }
+  else if (tgt.dataset.act) doAction(tgt.dataset.act);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const tag = (e.target.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return;
+  if ($("help").open) return;
+  const k = e.key, item = current();
+  if (k === "j" || k === "ArrowDown") { e.preventDefault(); move(1); }
+  else if (k === "k" || k === "ArrowUp") { e.preventDefault(); move(-1); }
+  else if (k === "a" && item) approve(item);
+  else if (k === "e" && item && item.kind !== "inbox") { e.preventDefault(); doAction("edit"); }
+  else if (k === "d" && item) remove(item);
+  else if (k === "?") showHelp();
+});
+function showHelp() {
+  $("helpRows").innerHTML = "<caption><b>" + t("sKeys") + "</b></caption>" + [
+    ["j / k, ↓ / ↑", t("kMove")], ["a", t("kApprove")], ["e", t("kEdit")], ["d", t("kDel")], ["?", t("kHelp")]
+  ].map(([k, v]) => "<tr><td><kbd>" + esc(k) + "</kbd></td><td>" + esc(v) + "</td></tr>").join("");
+  document.querySelector("#help button").textContent = t("close");
+  $("help").showModal();
+}
+$("helpBtn").onclick = showHelp;
+$("langBtn").onclick = () => { lang = lang === "vi" ? "en" : "vi"; localStorage.setItem("pbrain.lang", lang); render(); };
+$("commitBtn").onclick = () => {
+  const box = $("commitbox"), d = proj();
+  if (!box.classList.contains("hidden")) { box.classList.add("hidden"); return; }
+  $("commitFiles").textContent = (d.git_changes.length ? d.git_changes.join("\n") : t("noFiles")) + "\n" + t("commitHint");
+  $("commitFiles").style.whiteSpace = "pre-wrap";
+  if (!$("commitMsg").value) $("commitMsg").value = t("commitMsg");
+  $("commitGo").textContent = t("commit"); $("commitClose").textContent = t("close");
+  $("commitOut").classList.add("hidden"); box.classList.remove("hidden");
+};
+$("commitClose").onclick = () => $("commitbox").classList.add("hidden");
+$("commitGo").onclick = async () => {
+  const res = await api("/api/action", { project: S.cur, action: "commit", message: $("commitMsg").value });
+  const out = $("commitOut"); out.textContent = (res.ok ? "" : "exit " + res.exit + "\n") + (res.output || res.message); out.classList.remove("hidden");
+  await loadProject(S.cur, true);
+  if (res.ok) toast(t("commit") + ": OK");
+};
+init();
+</script>
+</body>
+</html>

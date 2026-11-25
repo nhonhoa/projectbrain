@@ -11,7 +11,7 @@ It follows the "LLM wiki" idea: raw sources stay untouched, the agent writes and
 wiki, and a schema fixes its structure. In a software project the source code is one of the raw
 sources.
 
-- Python 3.11+, standard library only. No API key, no server, no database to run.
+- Python 3.11+, standard library only. No API key, no database, no service to run. (`pbrain review` is an optional local web page you start when you want it.)
 - The tool is public; your knowledge stays in your own repositories.
 - Works for a single project. Several projects can share one knowledge repo.
 
@@ -50,10 +50,28 @@ pbrain check [files]             everything below, for changed files; exit 1 on 
 pbrain wiki lint                 structure, links, drift against code
 pbrain wiki touching <files>     wiki pages that cover these files
 pbrain wiki confirm <page>       mark a page as re-verified today
+pbrain review [ROOT ...]         local page to clear pending decisions with one click
 pbrain cases record <file.json>  run the current code and store its outputs
 pbrain cases check               replay every case
 pbrain sync                      fetch the shared knowledge repos
 ```
+
+## Review page
+
+`pbrain review` starts a small web page on your machine (default `http://127.0.0.1:8765/`) that
+lists everything waiting for a human decision, so you do not edit front matter by hand:
+
+- pages whose `trust` is not `agreed` (approve, edit, deprecate),
+- sections parked in `<wiki>/_inbox/*.md` (turn into a new page, append to a page, or discard),
+- pages whose covered code drifted (confirm, show the diff, edit),
+- every other lint finding (edit).
+
+Keys: `j`/`k` move, `a` approve or confirm, `e` edit, `d` discard or deprecate, `?` help. A
+"changed files" button commits only the wiki directory. The page is local-only: it binds to
+127.0.0.1, checks the `Host` and `Origin` headers, requires a per-run token on every write, and
+never pushes. Several projects can be reviewed in one page: `pbrain review ../other-project`
+(each extra root needs a `pbrain.toml`). Options: `--port` (0 = any free port), `--host`,
+`--no-open`.
 
 ## Configuration
 
