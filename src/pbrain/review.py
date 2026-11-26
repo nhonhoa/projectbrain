@@ -144,6 +144,8 @@ def build_queue(config) -> list[dict]:
 
     lint = {}
     for level, name, message in findings:
+        if name.startswith(f"{INBOX}/"):
+            continue  # a draft page in the inbox is listed below as one inbox item
         meta = metas.get(name, {})
         base = {"page": name, "title": meta.get("title") or name, "detail": message}
         if message.startswith("DRIFT:"):
@@ -164,7 +166,25 @@ def build_queue(config) -> list[dict]:
         item["detail"] = "; ".join(item["messages"])
 
     for file in _inbox_files(config):
-        _, sections = split_inbox(_read(file))
+        text = _read(file)
+        meta = wiki.parse_front_matter(text)
+        if meta is not None:
+            body = _body_after_front_matter(text)
+            queue["inbox"].append(
+                {
+                    "id": _item_id("inbox", file.name, "*page"),
+                    "kind": "inbox",
+                    "draft": True,
+                    "page": f"{INBOX}/{file.name}",
+                    "file": file.name,
+                    "heading": "",
+                    "title": meta.get("title") or file.name,
+                    "detail": f"{meta.get('type', '')} - trust: {meta.get('trust', '')}",
+                    "body": body,
+                }
+            )
+            continue
+        _, sections = split_inbox(text)
         for heading, lines in sections:
             body = "".join(lines).strip()
             queue["inbox"].append(
@@ -320,7 +340,58 @@ def _drop_section(path, text, preamble, sections, index) -> None:
     _write(path, "".join(out))
 
 
+def _body_after_front_matter(text: str) -> str:
+    lines = text.splitlines(keepends=True)
+    end = next((n for n in range(1, len(lines)) if lines[n].strip() == "---"), 0)
+    return "".join(lines[end + 1 :]).strip()
+
+
+def _inbox_draft(config, file):
+    path = _inside(_inbox_dir(config), file)
+    if not path.is_file():
+        raise ReviewError(f"no such inbox file: {file}", 404)
+    text = _read(path)
+    meta = wiki.parse_front_matter(text)
+    if meta is None:
+        raise ReviewError(f"{file} is not a whole page (no front matter)")
+    return path, text, meta
+
+
+def inbox_promote(config, file) -> dict:
+    """Move a whole page parked in the inbox into the wiki and list it in the index."""
+    path, text, meta = _inbox_draft(config, file)
+    filename = path.name
+    if filename in wiki.RESERVED:
+        raise ReviewError(f"{filename} is reserved")
+    target = _inside(config.wiki_dir, filename)
+    if target.exists():
+        raise ReviewError(f"{filename} already exists", 409)
+    _write(target, text)
+    if not meta.get("trust"):
+        _set_front_matter(config, filename, "trust", "requested")
+    path.unlink()
+
+    index_path = config.wiki_dir / "index.md"
+    existing = _read(index_path) if index_path.is_file() else "# Wiki index\n\n"
+    if f"]({filename})" not in existing:
+        title = _clean_line(meta.get("title") or filename)
+        body = _body_after_front_matter(text)
+        first = next(
+            (ln for ln in body.splitlines() if ln.strip() and not ln.startswith("#")), title
+        )
+        summary = _short(re.sub(r"[#*`>\[\]]", "", first), 100)
+        sep = _newline(existing)
+        if not existing.endswith("\n"):
+            existing += sep
+        _write(index_path, existing + f"- [{title}]({filename}) - {summary}" + sep)
+    return {"message": f"Moved {filename} into the wiki", "page": filename}
+
+
 def inbox_discard(config, file, heading) -> dict:
+    if not heading:
+        path, _, _ = _inbox_draft(config, file)
+        path.unlink()
+        return {"message": f"Discarded {path.name}"}
     path, text, preamble, sections, index = _inbox_section(config, file, heading)
     _drop_section(path, text, preamble, sections, index)
     return {"message": f"Discarded '{heading}'"}
@@ -402,9 +473,7 @@ def inbox_append(config, file, heading, page, section) -> dict:
     if last > 0 and not lines[last - 1].endswith("\n"):
         lines[last - 1] += nl
     body = "".join(sections[index][1]).strip()
-    addition = ([nl] if last > start + 1 else []) + [
-        f"{row}{nl}" for row in body.splitlines()
-    ]
+    addition = ([nl] if last > start + 1 else []) + [f"{row}{nl}" for row in body.splitlines()]
     lines[last:last] = addition
     _write(target, "".join(lines))
     _drop_section(path, text, preamble, sections, index)
@@ -548,6 +617,7 @@ ACTIONS = {
         c, *_need(p, "file", "heading", "name", "title", "type", "trust")
     ),
     "inbox_append": lambda c, p: inbox_append(c, *_need(p, "file", "heading", "page", "section")),
+    "inbox_promote": lambda c, p: inbox_promote(c, *_need(p, "file")),
     "commit": lambda c, p: commit(c, *_need(p, "message")),
 }
 
@@ -744,9 +814,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             f"http://{host}" for host in self.server.allowed_hosts
         }:
             return self._error(HTTPStatus.FORBIDDEN, "bad Origin header")
-        if not secrets.compare_digest(
-            self.headers.get("X-Pbrain-Token") or "", self.server.token
-        ):
+        if not secrets.compare_digest(self.headers.get("X-Pbrain-Token") or "", self.server.token):
             return self._error(HTTPStatus.FORBIDDEN, "missing or wrong X-Pbrain-Token")
         self._guard(self._post)
 
@@ -830,4 +898,3 @@ def add_parser(subparsers):
     parser.add_argument("--no-open", action="store_true", help="Do not open the browser.")
     parser.add_argument("--state", help="Scan state file (default as `pbrain scan`).")
     parser.set_defaults(func=_command)
-

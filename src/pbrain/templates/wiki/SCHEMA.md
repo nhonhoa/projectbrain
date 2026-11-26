@@ -8,7 +8,9 @@ what the code does.
 - `index.md`: table of contents, one line per page: `- [Title](file.md) - one-sentence summary`,
   grouped by topic.
 - `log.md`: change log, one line per ingest or edit: `## [YYYY-MM-DD] <ingest|edit|review> | <what>`.
-- `_inbox/`: items waiting to be merged by source readers. Lint ignores sub-directories.
+- `_inbox/`: loose `## ` sections waiting to be filed into a page (no front matter). A whole new page
+  waiting for approval goes directly in the wiki with `trust: requested`; lint warns about full pages
+  in the inbox.
 - `cases/`: behavior cases as JSON, see "Behavior cases" below.
 - Every page is one `.md` file with a lowercase, hyphen-separated ASCII name, placed directly in
   the wiki directory.

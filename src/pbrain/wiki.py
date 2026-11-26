@@ -23,6 +23,8 @@ from datetime import date
 from pathlib import Path
 
 RESERVED = {"index.md", "log.md", "SCHEMA.md"}
+# Loose sections waiting to be filed; a whole page belongs in the wiki itself.
+INBOX = "_inbox"
 ENUMS = {
     "type": {"concept", "feature", "rule", "decision", "contract", "gotcha"},
     "status": {"active", "superseded", "deprecated"},
@@ -314,7 +316,26 @@ def lint_wiki(config, today=None, max_age=None):
             errors.append("ORPHAN: not listed in index.md")
         findings += [("ERROR", page.name, message) for message in errors]
         findings += [("WARNING", page.name, message) for message in warnings]
+    for draft in inbox_drafts(wiki):
+        findings.append(
+            (
+                "WARNING",
+                f"{INBOX}/{draft.name}",
+                "full page parked in the inbox: move it into the wiki as a page "
+                "(keep `trust: requested` until approved); the inbox is for loose sections",
+            )
+        )
     return findings, len(pages)
+
+
+def inbox_drafts(wiki):
+    """Files in the inbox that are whole pages (they start with a front matter block)."""
+    inbox = wiki / INBOX
+    if not inbox.is_dir():
+        return []
+    return [
+        p for p in sorted(inbox.glob("*.md")) if parse_front_matter(p.read_text(encoding="utf-8"))
+    ]
 
 
 def _normalize_path(path):

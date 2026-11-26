@@ -222,7 +222,9 @@ def test_commit_only_wiki_files(tmp_path, helpers):
     assert result["ok"], result
     names = subprocess.run(
         ["git", "show", "--name-only", "--format=", "HEAD"],
-        cwd=tmp_path, capture_output=True, encoding="utf-8",
+        cwd=tmp_path,
+        capture_output=True,
+        encoding="utf-8",
     ).stdout.split()
     assert names == ["docs/wiki/totals.md"]
     assert review.git_changes(config) == []
@@ -329,3 +331,46 @@ def test_http_smoke(cfg):
     finally:
         server.shutdown()
         server.server_close()
+
+
+DRAFT = (
+    "---\ntitle: Draft contract\ntype: contract\nstatus: active\ntrust: requested\n"
+    "verified: 2026-01-01\n---\n\n## Intent\nWhy.\n\n## Reality\nWhere.\n"
+)
+
+
+def test_inbox_draft_page_is_one_item_and_lint_warns(cfg):
+    raw(cfg.wiki_dir / "_inbox" / "draft.md", DRAFT)
+    items = [i for i in review.build_queue(cfg) if i["kind"] == "inbox"]
+    assert len(items) == 1 and items[0]["draft"] and items[0]["title"] == "Draft contract"
+    assert items[0]["body"].startswith("## Intent")
+    findings, _ = wiki.lint_wiki(cfg)
+    assert any(name == "_inbox/draft.md" and level == "WARNING" for level, name, _ in findings)
+    assert not any(
+        i["kind"] == "lint" and i["page"] == "_inbox/draft.md" for i in review.build_queue(cfg)
+    )
+
+
+def test_inbox_promote_moves_page_and_indexes_it(cfg):
+    raw(cfg.wiki_dir / "_inbox" / "draft.md", DRAFT)
+    result = review.inbox_promote(cfg, "draft.md")
+    assert result["page"] == "draft.md"
+    assert not (cfg.wiki_dir / "_inbox" / "draft.md").exists()
+    assert (cfg.wiki_dir / "draft.md").read_text(encoding="utf-8") == DRAFT
+    assert "- [Draft contract](draft.md) - Why." in (cfg.wiki_dir / "index.md").read_text(
+        encoding="utf-8"
+    )
+    ids = [i["id"] for i in review.build_queue(cfg)]
+    assert "trust:draft.md" in ids and not any(i.startswith("inbox:") for i in ids)
+    raw(cfg.wiki_dir / "_inbox" / "draft.md", DRAFT)
+    with pytest.raises(review.ReviewError):
+        review.inbox_promote(cfg, "draft.md")
+
+
+def test_inbox_draft_discard_and_section_files_refused(cfg):
+    raw(cfg.wiki_dir / "_inbox" / "draft.md", DRAFT)
+    review.inbox_discard(cfg, "draft.md", "")
+    assert not (cfg.wiki_dir / "_inbox" / "draft.md").exists()
+    raw(cfg.wiki_dir / "_inbox" / "notes.md", INBOX_TEXT)
+    with pytest.raises(review.ReviewError):
+        review.inbox_promote(cfg, "notes.md")

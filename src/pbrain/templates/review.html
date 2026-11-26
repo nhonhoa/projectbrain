@@ -149,6 +149,7 @@ const I18N = {
     commitHint: "Only files under the wiki directory are committed. Nothing is pushed.",
     hint_trust: "You asked for this page but never confirmed its content. Approve if it says what you want, edit it, or deprecate it.",
     hint_inbox: "A note waiting to be filed. Keep it as a new page, merge it into an existing page, or discard it.",
+    hint_draft: "A whole page parked in the inbox. Move it into the wiki (then approve it under Trust), edit it first, or discard it.",
     hint_drift: "The code this page describes changed after the page was last checked. Confirm if the page is still right, or edit it.",
     hint_lint: "The page breaks a wiki convention. Edit it to fix the finding.",
     offline: "Cannot reach the review server. Is it still running? Reload the page after restarting it.",
@@ -156,7 +157,7 @@ const I18N = {
     gone: "The linked item is no longer waiting (already handled).",
     nothing: "Nothing waiting", nothingSub: "No decisions are pending in this project.",
     approve: "Approve", confirm: "Confirm (still correct)", edit: "Edit", deprecate: "Deprecate",
-    newPage: "New page", append: "Append to...", discard: "Discard", showDiff: "Show diff",
+    newPage: "New page", append: "Append to...", discard: "Discard", promote: "Move into wiki", showDiff: "Show diff",
     name: "Name", title: "Title", type: "Type", trustL: "Trust", page: "Page", section: "Section",
     create: "Create", add: "Append", save: "Save", cancel: "Cancel", close: "Close",
     saved: "Saved", conflict: "The file changed on disk since you opened it. Cancel and reopen.",
@@ -173,6 +174,7 @@ const I18N = {
     commitHint: "Chỉ commit các file trong thư mục wiki. Không push.",
     hint_trust: "Trang này viết theo yêu cầu của bạn nhưng bạn chưa xác nhận nội dung. Đúng ý thì Duyệt, chưa đúng thì Sửa, không cần nữa thì Ngừng dùng.",
     hint_inbox: "Ghi chú đang chờ xếp chỗ. Giữ thành trang mới, gộp vào trang có sẵn, hoặc bỏ.",
+    hint_draft: "Một trang hoàn chỉnh đang nằm trong hộp thư. Đưa vào wiki (rồi duyệt ở mục Độ tin cậy), sửa trước, hoặc bỏ.",
     hint_drift: "Code mà trang này mô tả đã đổi sau lần kiểm gần nhất. Trang còn đúng thì Xác nhận, hết đúng thì Sửa.",
     hint_lint: "Trang vi phạm quy ước wiki. Bấm Sửa để chỉnh theo thông báo.",
     offline: "Không kết nối được máy chủ trang duyệt. Kiểm tra nó còn chạy không, rồi tải lại trang.",
@@ -180,7 +182,7 @@ const I18N = {
     gone: "Mục trong đường dẫn không còn chờ nữa (đã xử lý).",
     nothing: "Không còn gì chờ duyệt", nothingSub: "Dự án này không có quyết định nào đang chờ.",
     approve: "Duyệt", confirm: "Xác nhận (vẫn đúng)", edit: "Sửa", deprecate: "Ngừng dùng",
-    newPage: "Trang mới", append: "Gộp vào...", discard: "Bỏ", showDiff: "Xem diff",
+    newPage: "Trang mới", append: "Gộp vào...", discard: "Bỏ", promote: "Đưa vào wiki", showDiff: "Xem diff",
     name: "Tên", title: "Tiêu đề", type: "Loại", trustL: "Độ tin cậy", page: "Trang", section: "Mục",
     create: "Tạo", add: "Gộp", save: "Lưu", cancel: "Hủy", close: "Đóng",
     saved: "Đã lưu", conflict: "File đã đổi trên đĩa kể từ khi bạn mở. Hãy hủy và mở lại.",
@@ -506,14 +508,14 @@ async function renderDetail() {
   const token = (renderDetail.n = (renderDetail.n || 0) + 1);
   let html = "<h2>" + esc(item.title) + ' <a class="anchor" href="' + esc(hashFor(item.id)) + '">#</a></h2><div class="sub"><span class="badge ' + (item.kind === "lint" ? item.severity : item.kind) + '">' +
     esc(item.kind) + "</span>" + esc(item.page || "") + "</div>";
-  if (item.kind !== "page") html += '<div class="hint">' + esc(t("hint_" + item.kind)) + "</div>";
+  if (item.kind !== "page") html += '<div class="hint">' + esc(t(item.draft ? "hint_draft" : "hint_" + item.kind)) + "</div>";
   if (item.kind !== "inbox" && item.kind !== "page") html += '<div class="msg">' + esc(item.detail) + "</div>";
   if (S.note) html += '<div class="msg ' + (S.note.bad ? "bad" : "") + '">' + esc(S.note.text) + "</div>";
   html += actionsHtml(item);
   html += '<div id="panel"></div><div id="body">' + t("loading") + "</div>";
   el.innerHTML = html;
   wirePanel(item);
-  if (item.kind === "inbox") { $("body").innerHTML = '<div class="md">' + markdown(item.body) + "</div>"; return; }
+  if (item.kind === "inbox" && !(item.draft && S.editing)) { $("body").innerHTML = '<div class="md">' + markdown(item.body) + "</div>"; return; }
   if (S.editing) return showEditor(item);
   const res = await api("/api/page?project=" + S.cur + "&page=" + encodeURIComponent(item.page));
   if (token !== renderDetail.n || !$("body")) return;
@@ -526,6 +528,7 @@ function actionsHtml(item) {
   const b = (a, label, cls) => '<button data-act="' + a + '"' + (cls ? ' class="' + cls + '"' : "") + ">" + t(label) + "</button>";
   let h = '<div class="actions">';
   if (item.kind === "trust") h += b("approve", "approve", "primary") + b("edit", "edit") + b("deprecate", "deprecate", "danger");
+  else if (item.kind === "inbox" && item.draft) h += b("promote", "promote", "primary") + b("edit", "edit") + b("discard", "discard", "danger");
   else if (item.kind === "inbox") h += b("newpage", "newPage", "primary") + b("append", "append") + b("discard", "discard", "danger");
   else if (item.kind === "drift") h += b("confirm", "confirm", "primary") + b("diff", "showDiff") + b("edit", "edit");
   else h += b("edit", "edit");
@@ -594,6 +597,7 @@ function move(delta) {
 function approve(item) {
   if (item.kind === "trust") act("set_trust", { page: item.page, trust: "agreed" });
   else if (item.kind === "drift") act("confirm", { page: item.page });
+  else if (item.kind === "inbox" && item.draft) act("inbox_promote", { file: item.file });
 }
 function remove(item) {
   if (item.kind === "trust") { if (confirm(t("sure"))) act("set_status", { page: item.page, status: "deprecated" }); }
@@ -605,7 +609,7 @@ async function showDiff(item) {
 }
 function doAction(name) {
   const item = current(); if (!item) return;
-  if (name === "approve" || name === "confirm") approve(item);
+  if (name === "approve" || name === "confirm" || name === "promote") approve(item);
   else if (name === "edit") { S.editing = true; renderDetail(); }
   else if (name === "deprecate" || name === "discard") remove(item);
   else if (name === "diff") showDiff(item);
@@ -629,7 +633,7 @@ document.addEventListener("keydown", (e) => {
   if (k === "j" || k === "ArrowDown") { e.preventDefault(); move(1); }
   else if (k === "k" || k === "ArrowUp") { e.preventDefault(); move(-1); }
   else if (k === "a" && item) approve(item);
-  else if (k === "e" && item && item.kind !== "inbox") { e.preventDefault(); doAction("edit"); }
+  else if (k === "e" && item && (item.kind !== "inbox" || item.draft)) { e.preventDefault(); doAction("edit"); }
   else if (k === "d" && item) remove(item);
   else if (k === "?") showHelp();
 });
