@@ -59,6 +59,7 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(260p
   padding: 1px 7px; border-radius: 4px; margin-right: 6px; background: var(--code); color: var(--muted);
 }
 .badge.error { color: var(--bad); } .badge.warning, .badge.drift { color: var(--warn); }
+.badge.new { color: var(--ok); }
 .badge.inbox { color: var(--accent); } .badge.trust { color: var(--ok); }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; align-items: center; }
 .form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; padding: 10px;
@@ -119,6 +120,7 @@ a.ref { text-decoration: underline dotted; }
   <div class="tabs" id="tabs"></div>
   <div class="chips" id="chips"></div>
   <span class="spacer"></span>
+  <span id="scanInfo" class="sub"></span>
   <button id="commitBtn"></button>
   <button id="langBtn" title="Language"></button>
   <button id="helpBtn">?</button>
@@ -161,7 +163,8 @@ const I18N = {
     sure: "Are you sure?", loading: "Loading...", error: "Error", noFiles: "No changed files.",
     sKeys: "Keyboard shortcuts", kMove: "Next / previous item", kApprove: "Approve / confirm",
     kEdit: "Edit", kDel: "Discard / deprecate", kHelp: "This help", lang: "VI",
-    covers: "Covers", inboxFrom: "Inbox file", pending: "pending", fail: "Request failed"
+    covers: "Covers", inboxFrom: "Inbox file", pending: "pending", fail: "Request failed",
+    isNew: "new", lastScan: "Last scan"
   },
   vi: {
     read: "Đọc", indexTitle: "Mục lục",
@@ -184,7 +187,8 @@ const I18N = {
     sure: "Bạn chắc chắn chứ?", loading: "Đang tải...", error: "Lỗi", noFiles: "Không có file thay đổi.",
     sKeys: "Phím tắt", kMove: "Mục kế / mục trước", kApprove: "Duyệt / xác nhận",
     kEdit: "Sửa", kDel: "Bỏ / ngừng dùng", kHelp: "Trợ giúp này", lang: "EN",
-    covers: "Bao phủ", inboxFrom: "File hộp thư", pending: "đang chờ", fail: "Yêu cầu thất bại"
+    covers: "Bao phủ", inboxFrom: "File hộp thư", pending: "đang chờ", fail: "Yêu cầu thất bại",
+    isNew: "mới", lastScan: "Quét lần cuối"
   }
 };
 const TYPES = ["concept", "feature", "rule", "decision", "contract", "gotcha"];
@@ -195,7 +199,7 @@ const t = (k) => (I18N[lang] && I18N[lang][k]) || I18N.en[k] || k;
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
-const S = { projects: [], cur: 0, data: {}, kind: null, sel: null, editing: null, panel: null, diff: null, note: null };
+const S = { scannedAt: "", projects: [], cur: 0, data: {}, kind: null, sel: null, editing: null, panel: null, diff: null, note: null };
 
 async function api(path, body) {
   const opt = body === undefined ? {} : {
@@ -449,6 +453,7 @@ function selectFirstIfNone() {
 async function init() {
   const res = await api("/api/projects");
   S.projects = res.projects || [];
+  S.scannedAt = res.scanned_at || "";
   S.want = readHash();
   await loadProject(0);
   for (let i = 1; i < S.projects.length; i++) await loadProject(i);
@@ -476,6 +481,7 @@ function render() {
     const n = k === "read" ? (d && d.library ? d.library.length : 0) : k ? counts[k] || 0 : d ? d.total : 0;
     return '<button class="chip' + (S.kind === k ? " on" : "") + '" data-kind="' + (k || "") + '">' + t(k || "all") + " " + n + "</button>";
   }).join("");
+  $("scanInfo").textContent = S.scannedAt ? t("lastScan") + ": " + new Date(S.scannedAt).toLocaleString(lang) : "";
   const changes = d ? d.git_changes : [];
   $("commitBtn").textContent = t("changed") + ": " + changes.length + " — " + t("commit");
   renderList(); renderDetail();
@@ -485,8 +491,9 @@ function renderList() {
   if (!proj()) { el.innerHTML = '<div id="empty">' + t("loading") + "</div>"; return; }
   el.innerHTML = list.map((i) => {
     const cls = i.kind === "lint" ? i.severity : i.kind;
+    const fresh = ((S.projects[S.cur] || {}).new || []).includes(i.id) ? '<span class="badge new">' + t("isNew") + "</span>" : "";
     return '<button class="item' + (i.id === S.sel ? " sel" : "") + '" data-id="' + esc(i.id) + '"><div class="t"><span class="badge ' + cls + '">' +
-      esc(i.kind === "lint" ? i.severity : i.kind) + "</span>" + esc(i.title) + '</div><div class="d">' + esc(i.detail) + "</div></button>";
+      esc(i.kind === "lint" ? i.severity : i.kind) + "</span>" + fresh + esc(i.title) + '</div><div class="d">' + esc(i.detail) + "</div></button>";
   }).join("");
   const sel = el.querySelector(".sel"); if (sel) sel.scrollIntoView({ block: "nearest" });
 }

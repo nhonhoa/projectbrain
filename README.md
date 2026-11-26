@@ -51,6 +51,7 @@ pbrain wiki lint                 structure, links, drift against code
 pbrain wiki touching <files>     wiki pages that cover these files
 pbrain wiki confirm <page>       mark a page as re-verified today
 pbrain review [ROOT ...]         local page to clear pending decisions with one click
+pbrain scan [ROOT ...]           report pending review items and what is new since the last scan
 pbrain cases record <file.json>  run the current code and store its outputs
 pbrain cases check               replay every case
 pbrain sync                      fetch the shared knowledge repos
@@ -78,6 +79,26 @@ Keys: `j`/`k` move, `a` approve or confirm, `e` edit, `d` discard or deprecate, 
 never pushes. Several projects can be reviewed in one page: `pbrain review ../other-project`
 (each extra root needs a `pbrain.toml`). Options: `--port` (0 = any free port), `--host`,
 `--no-open`.
+
+## Scheduled scan
+
+`pbrain scan` is the non-interactive twin of the review page, meant for a scheduler. For each
+project it fetches the `extends` repos (`--no-sync` to skip), builds the review queue and compares
+it with the previous scan, then prints per project the totals by kind, the new items and the ones
+that are gone (`--json` for a machine-readable form). The result is stored in `--state`
+(default `~/.cache/pbrain/scan-state.json`); `pbrain review` reads the same file, shows
+"Last scan: ..." and marks new items. Exit code: 0 normally, 1 when a new lint error or drift
+appeared, 2 for a usage error. Projects come from arguments or `--roots-file` (one directory per
+line; blank lines and `#` comments are ignored, directories without `pbrain.toml` are skipped
+with a warning).
+
+```
+# Windows, every Monday 08:00
+schtasks /Create /SC WEEKLY /D MON /ST 08:00 /TN "pbrain scan" /TR "pbrain scan --roots-file C:\Tools\roots.txt"
+
+# cron
+0 8 * * 1  pbrain scan --roots-file ~/roots.txt
+```
 
 ## Configuration
 

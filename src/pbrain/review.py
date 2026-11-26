@@ -562,11 +562,30 @@ def run_action(config, payload: dict) -> dict:
     return result
 
 
-def project_info(configs) -> list[dict]:
-    return [
-        {"index": i, "name": c.project, "root": str(c.root), "wiki": c.wiki.dir}
-        for i, c in enumerate(configs)
-    ]
+def project_info(configs, state=None) -> list[dict]:
+    """Project list; ``state`` (from the last ``pbrain scan``) adds each project's new item ids."""
+    projects = (state or {}).get("projects", {})
+    info = []
+    for i, c in enumerate(configs):
+        entry = projects.get(str(c.root.resolve()))
+        new = entry.get("new", []) if isinstance(entry, dict) else []
+        info.append(
+            {
+                "index": i,
+                "name": c.project,
+                "root": str(c.root),
+                "wiki": c.wiki.dir,
+                "new": [n for n in new if isinstance(n, str)],
+            }
+        )
+    return info
+
+
+def scan_state(path=None) -> dict:
+    """The last ``pbrain scan`` result (``{}`` when there is none)."""
+    from . import scan
+
+    return scan.load_state(path or scan.default_state_path())
 
 
 def library(config) -> list[dict]:
@@ -623,12 +642,13 @@ def _template() -> str:
 class ReviewServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, configs, token=None):
+    def __init__(self, address, configs, token=None, state_path=None):
         host = address[0]
         if ":" in host:
             self.address_family = socket.AF_INET6
         super().__init__(address, ReviewHandler)
         self.configs = list(configs)
+        self.state_path = state_path
         self.token = token or secrets.token_urlsafe(24)
         self.lock = threading.Lock()
         port = self.server_address[1]
@@ -692,7 +712,15 @@ class ReviewHandler(BaseHTTPRequestHandler):
         if route == "/favicon.ico":
             return self._send(204, b"", "image/x-icon")
         if route == "/api/projects":
-            return self._json(200, {"ok": True, "projects": project_info(self.server.configs)})
+            state = scan_state(self.server.state_path)
+            return self._json(
+                200,
+                {
+                    "ok": True,
+                    "projects": project_info(self.server.configs, state),
+                    "scanned_at": state.get("scanned_at") or "",
+                },
+            )
         config = self._config(query) if route.startswith("/api/") else None
         page = (query.get("page") or [""])[0]
         if route == "/api/queue":
@@ -774,7 +802,7 @@ def _command(args, config) -> int:
         print(f"pbrain review: {error}", file=sys.stderr)
         return 2
     try:
-        server = ReviewServer((args.host, args.port), configs)
+        server = ReviewServer((args.host, args.port), configs, state_path=args.state)
     except OSError as error:
         print(f"pbrain review: cannot listen on {args.host}:{args.port}: {error}", file=sys.stderr)
         return 2
@@ -800,5 +828,6 @@ def add_parser(subparsers):
     parser.add_argument("--port", type=int, default=8765, help="0 picks a free port.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--no-open", action="store_true", help="Do not open the browser.")
+    parser.add_argument("--state", help="Scan state file (default as `pbrain scan`).")
     parser.set_defaults(func=_command)
 

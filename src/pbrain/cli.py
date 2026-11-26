@@ -23,6 +23,7 @@ COMMAND_MODULES = (
     "pbrain.ecosystem",
     "pbrain.hooks",
     "pbrain.review",
+    "pbrain.scan",
 )
 
 
