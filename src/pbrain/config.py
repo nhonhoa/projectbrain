@@ -57,6 +57,8 @@ class ReuseConfig:
         ".venv",
         "venv",
     )
+    # File names (glob) left out of the index, like test modules outside a ``tests`` directory.
+    skip_files: tuple[str, ...] = ("test_*.py", "tests_*.py", "*_test.py", "*_tests.py", "tests.py")
     index: str = ".pbrain/reuse_index.sqlite3"
     # JSON file with one-line descriptions per symbol, committed to git. Empty = none.
     summaries: str = ""

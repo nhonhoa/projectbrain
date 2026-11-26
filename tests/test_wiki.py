@@ -267,6 +267,14 @@ def test_symbol_source_nested():
     assert wiki.symbol_source("def (", "x") is None
 
 
+def test_symbol_source_constants():
+    text = "LIMIT = 1\nRULES: dict = {\n    'a': 1,\n}\nclass A:\n    KINDS = ('x',)\nLIMIT = 2\n"
+    assert wiki.symbol_source(text, "RULES") == "RULES: dict = {\n    'a': 1,\n}"
+    assert wiki.symbol_source(text, "A.KINDS") == "    KINDS = ('x',)"
+    assert wiki.symbol_source(text, "LIMIT") == "LIMIT = 2"
+    assert wiki.symbol_source(text, "LIMIT.x") is None
+
+
 def test_command_lint_exit_codes(tmp_path, capsys):
     args = type("Args", (), {"max_age": None})()
     assert wiki._lint_command(args, Config(root=tmp_path)) == 0

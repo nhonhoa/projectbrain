@@ -16,6 +16,7 @@ code changes the old description stops applying.
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
 import sqlite3
@@ -82,6 +83,11 @@ def _signature(path: Path) -> str:
     return f"{stat.st_mtime_ns}:{stat.st_size}"
 
 
+def skipped_file(config: Config, name: str) -> bool:
+    """Whether a file name matches ``skip_files``."""
+    return any(fnmatch.fnmatchcase(name, pattern) for pattern in config.reuse.skip_files)
+
+
 def source_files(config: Config):
     """Files that enter the index as ``(relative posix path, Path)``, skipping ``skip_parts``."""
     root = config.root
@@ -93,8 +99,11 @@ def source_files(config: Config):
             continue
         for path in sorted(base.rglob("*")):
             relative = path.relative_to(root)
-            if path.suffix in suffixes and path.is_file() and not skip.intersection(relative.parts):
-                yield relative.as_posix(), path
+            if path.suffix not in suffixes or skip.intersection(relative.parts):
+                continue
+            if skipped_file(config, path.name) or not path.is_file():
+                continue
+            yield relative.as_posix(), path
 
 
 def load_summaries(config: Config) -> dict:

@@ -150,3 +150,13 @@ def test_sanitize_text_rewrites_secret_like_pairs():
     assert store.sanitize_text("tokenizer: ok") == "tokenizer: ok"
     pw = "PASS" + "WORD"
     assert store.sanitize_text(f"{pw} = 1") == f"{pw} - 1"
+
+
+def test_source_files_skip_test_modules_by_name(tmp_path):
+    (tmp_path / "app").mkdir()
+    for name in ("views.py", "tests.py", "tests_views.py", "test_views.py", "views_test.py"):
+        (tmp_path / "app" / name).write_text("x = 1\n", encoding="utf-8")
+    config = Config(root=tmp_path, reuse=ReuseConfig(roots=("app",)))
+    assert [rel for rel, _ in store.source_files(config)] == ["app/views.py"]
+    config = Config(root=tmp_path, reuse=ReuseConfig(roots=("app",), skip_files=()))
+    assert len(list(store.source_files(config))) == 5

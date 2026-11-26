@@ -177,9 +177,17 @@ def _prepare_path(config):
         sys.path.insert(0, root)
 
 
+def resolve(config, path):
+    """A case file from the command line: as typed when it exists, else under the project root."""
+    path = Path(path)
+    if path.is_absolute() or path.exists():
+        return path
+    return config.root / path
+
+
 def record(config, path, refresh=False):
     """Fill ``expected`` from the current code; return the exit code."""
-    path = Path(path)
+    path = resolve(config, path)
     _prepare_path(config)
     spec = read_spec(path)
     problems = validate(config, path, spec)
@@ -212,7 +220,7 @@ def record(config, path, refresh=False):
 def case_files(config, paths=None):
     """Explicit paths, or every ``*.json`` in the configured cases directory."""
     if paths:
-        return [Path(p) for p in paths]
+        return [resolve(config, p) for p in paths]
     if not config.cases_dir.is_dir():
         return []
     return sorted(config.cases_dir.glob("*.json"))

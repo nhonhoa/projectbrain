@@ -94,20 +94,36 @@ class Git:
         return {name for name in (tracked + untracked).split("\0") if name}
 
 
+def _defines(node, name):
+    """Whether a statement defines ``name``: a def, a class, or an assignment such as a constant."""
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return node.name == name
+    if isinstance(node, ast.Assign):
+        targets = node.targets
+    elif isinstance(node, ast.AnnAssign):
+        targets = [node.target]
+    else:
+        return False
+    return any(isinstance(t, ast.Name) and t.id == name for t in targets)
+
+
 def symbol_source(text, symbol):
-    """Source of ``Class.method`` in Python text, with decorators; None if absent or invalid."""
+    """Source of ``Class.method`` or a constant in Python text, with decorators; None if absent."""
     try:
         body = ast.parse(text).body
     except (SyntaxError, ValueError):
         return None
     node = None
     for name in symbol.split("."):
-        kinds = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
-        node = next((n for n in body if isinstance(n, kinds) and n.name == name), None)
-        if node is None:
+        if node is not None and not isinstance(node, ast.ClassDef):
             return None
-        body = node.body
-    start = min([node.lineno] + [d.lineno for d in node.decorator_list])
+        # The last assignment wins, as at run time; a def or class is taken where it is.
+        matches = [n for n in body if _defines(n, name)]
+        if not matches:
+            return None
+        node = matches[-1]
+        body = getattr(node, "body", [])
+    start = min([node.lineno] + [d.lineno for d in getattr(node, "decorator_list", [])])
     return "\n".join(text.splitlines()[start - 1 : node.end_lineno])
 
 

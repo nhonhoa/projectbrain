@@ -121,6 +121,7 @@ dir = "docs/wiki/cases"
 catalog = "tools/reuse_catalog.py"   # Python file exposing REUSE_CATALOG
 roots = ["src"]                      # directories to index
 summaries = ""                       # optional JSON of one-line symbol descriptions
+skip_files = ["test_*.py", "tests_*.py", "*_test.py", "*_tests.py", "tests.py"]   # default
 
 [check]
 ruff = true
@@ -142,7 +143,8 @@ verified: 2026-01-15
 ---
 ```
 
-`covers` names functions, not files, so a page is flagged only when that function changes.
+`covers` names functions, classes or module/class constants (`file.py::RULES`), not files, so a
+page is flagged only when that definition changes.
 `pbrain wiki confirm` records a fingerprint of the confirmed code (`verified_hash`), so a
 confirmation holds even when the change is not committed yet.
 `trust` records where a statement comes from: agreed with the user, requested without

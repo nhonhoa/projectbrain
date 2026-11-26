@@ -12,6 +12,7 @@ import re
 
 from ..config import Config
 from .catalog import load_catalog
+from .store import skipped_file
 
 
 def relative_path(config: Config, file_path: str) -> str | None:
@@ -34,6 +35,8 @@ def in_scope(config: Config, rel: str) -> bool:
     if not rel.endswith(tuple(reuse.suffixes)):
         return False
     if set(reuse.skip_parts).intersection(parts):
+        return False
+    if skipped_file(config, parts[-1]):
         return False
     return rel != reuse.catalog.replace("\\", "/")
 

@@ -219,3 +219,10 @@ def test_command_without_case_files(tmp_path, capsys):
     args = type("Args", (), {"files": [], "strict": False})()
     assert cases._check_command(args, config) == 0
     assert "No behavior case files" in capsys.readouterr().out
+
+
+def test_record_resolves_path_under_root(project, tmp_path, monkeypatch):
+    path = write_spec(project, [{"id": "c1", "fn": "double", "args": [2]}])
+    monkeypatch.chdir(tmp_path.parent)
+    assert cases.record(project, "cases/" + path.name) == 0
+    assert json.loads(path.read_text(encoding="utf-8"))["cases"][0]["expected"] == 4
