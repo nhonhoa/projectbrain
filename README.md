@@ -42,6 +42,20 @@ pbrain init --rules CLAUDE.md
 Each `init` flag installs one level and can be used alone:
 `--config`, `--wiki`, `--hooks`, `--pre-commit`, `--rules FILE`.
 
+To join a shared knowledge repo (see "Shared knowledge across projects"):
+
+```
+pbrain init --all --extends https://github.com/me/my-knowledge
+```
+
+`--extends` writes `extends` into `pbrain.toml` (creating it if needed), fetches the repo, and fills
+in the wiki headings (`sections`), page limits and cases directory from the repo's `pbrain.toml`,
+and uses its `SCHEMA.md` for the new wiki. Keys the project already sets are never overwritten, and
+an existing `extends` line is left alone. It can be repeated. On a terminal, `init --config` or
+`--all` asks for a repo when the project has none (not in hooks or CI; `--no-extends` skips the
+question). It prints the line the owner of the shared repo adds to its `--roots-file` to include the
+project in `pbrain scan`; pbrain never edits another repository.
+
 ## Commands
 
 ```

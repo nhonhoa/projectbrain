@@ -152,3 +152,122 @@ def test_custom_sections_flow_into_schema(tmp_path):
     init.install_wiki(load(tmp_path))
     schema = (tmp_path / "docs/wiki/SCHEMA.md").read_text(encoding="utf-8")
     assert "`## Why`" in schema and "`## Now`" in schema
+
+
+# --- init --extends / interactive prompt -------------------------------------------------
+
+
+SHARED_TOML = (
+    'project = "shared"\n[wiki]\ndir = "wiki"\n'
+    'sections = ["## Ý định", "## Thực tế"]\nmax_lines = 60\n[cases]\ndir = "wiki/cases"\n'
+)
+
+
+def make_shared(tmp_path, helpers, schema=True):
+    shared = tmp_path / "shared"
+    helpers.write(shared, "pbrain.toml", SHARED_TOML)
+    if schema:
+        helpers.write(shared, "wiki/SCHEMA.md", "# Shared schema\n")
+    helpers.write(shared, "review_projects.txt", "# roots\n")
+    return shared
+
+
+def test_extends_creates_config_with_shared_defaults(tmp_path, run_cli, helpers):
+    shared = make_shared(tmp_path, helpers)
+    app = tmp_path / "app"
+    app.mkdir()
+    code, out, _ = run_cli("--root", app, "init", "--extends", shared, "--no-extends")
+    assert code == 0
+    config = load(app)
+    assert config.extends == (str(shared),)
+    assert config.wiki.sections == ("## Ý định", "## Thực tế")
+    assert config.wiki.max_lines == 60
+    assert config.wiki.dir == "docs/wiki"
+    assert config.cases.dir == "docs/wiki/cases"
+    assert "review_projects.txt" in out and str(app) in out
+    assert not (app / "docs").exists()  # only the config step ran
+
+
+def test_extends_with_all_copies_shared_schema(tmp_path, run_cli, helpers):
+    shared = make_shared(tmp_path, helpers)
+    app = tmp_path / "app"
+    app.mkdir()
+    helpers.init_repo(app)
+    run_cli("--root", app, "init", "--all", "--extends", shared)
+    assert (app / "docs/wiki/SCHEMA.md").read_text(encoding="utf-8") == "# Shared schema\n"
+
+
+def test_extends_never_overwrites_existing_config(tmp_path, run_cli, helpers):
+    shared = make_shared(tmp_path, helpers)
+    app = tmp_path / "app"
+    original = 'project = "mine"\n\n[wiki]\ndir = "notes"\nsections = ["## A"]\n'
+    helpers.write(app, "pbrain.toml", original)
+    run_cli("--root", app, "init", "--extends", shared)
+    config = load(app)
+    assert config.extends == (str(shared),)
+    assert config.wiki.sections == ("## A",)  # kept
+    assert config.wiki.dir == "notes"
+    assert config.wiki.max_lines == 60  # missing key filled in
+    assert config.cases.dir == "notes/cases"
+    text = (app / "pbrain.toml").read_text(encoding="utf-8")
+    assert 'project = "mine"' in text and text.count("sections") == 1
+
+
+def test_extends_keeps_existing_extends_and_is_idempotent(tmp_path, run_cli, helpers):
+    shared = make_shared(tmp_path, helpers)
+    app = tmp_path / "app"
+    helpers.write(app, "pbrain.toml", 'extends = ["elsewhere"]\n')
+    _, out, _ = run_cli("--root", app, "init", "--extends", shared)
+    assert load(app).extends == ("elsewhere",)
+    assert "by hand" in out
+    run_cli("--root", app, "init", "--extends", shared)
+    first = (app / "pbrain.toml").read_bytes()
+    run_cli("--root", app, "init", "--extends", shared)
+    assert (app / "pbrain.toml").read_bytes() == first
+
+
+def test_extends_unavailable_repo_still_writes_extends(tmp_path, run_cli, helpers):
+    app = tmp_path / "app"
+    app.mkdir()
+    code, out, _ = run_cli("--root", app, "init", "--extends", tmp_path / "nope")
+    assert code == 0
+    assert len(load(app).extends) == 1
+    assert "not available" in out
+
+
+def test_no_tty_never_prompts(tmp_path, run_cli, monkeypatch):
+    def boom(*_a):
+        raise AssertionError("must not prompt")
+
+    monkeypatch.setattr("builtins.input", boom)
+    app = tmp_path / "app"
+    app.mkdir()
+    code, _, _ = run_cli("--root", app, "init", "--config")  # pytest: stdin is not a TTY
+    assert code == 0 and load(app).extends == ()
+
+
+def test_tty_prompt_links_repo(tmp_path, run_cli, helpers, monkeypatch):
+    shared = make_shared(tmp_path, helpers)
+    monkeypatch.setattr(init, "_interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda *_a: str(shared))
+    app = tmp_path / "app"
+    app.mkdir()
+    run_cli("--root", app, "init", "--config")
+    assert load(app).extends == (str(shared),)
+
+
+def test_tty_prompt_skippable_and_disabled_by_flag(tmp_path, run_cli, monkeypatch):
+    monkeypatch.setattr(init, "_interactive", lambda: True)
+    app = tmp_path / "app"
+    app.mkdir()
+    monkeypatch.setattr("builtins.input", lambda *_a: "")
+    run_cli("--root", app, "init", "--config")
+    assert load(app).extends == ()
+    monkeypatch.setattr("builtins.input", lambda *_a: (_ for _ in ()).throw(AssertionError))
+    run_cli("--root", app, "init", "--all", "--no-extends")
+    assert load(app).extends == ()
+
+
+def test_ci_env_is_not_interactive(monkeypatch):
+    monkeypatch.setenv("CI", "1")
+    assert init._interactive() is False

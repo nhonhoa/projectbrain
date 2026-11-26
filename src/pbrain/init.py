@@ -9,6 +9,9 @@ leaves a working setup:
 - ``--pre-commit``  add ``pbrain check --staged`` to the git pre-commit hook
 - ``--rules FILE``  write the agent rules between markers in FILE (e.g. CLAUDE.md)
 - ``--all``         config, wiki, hooks and pre-commit
+- ``--extends URL`` link the project to a shared knowledge repo (repeatable): writes ``extends``,
+  fetches the repo and fills in the wiki headings and cases directory from its ``pbrain.toml``.
+  On a terminal, ``--config``/``--all`` ask for a repo when none is set (``--no-extends`` skips).
 
 Every step is idempotent and never overwrites content it did not write.
 """
@@ -16,9 +19,14 @@ Every step is idempotent and never overwrites content it did not write.
 from __future__ import annotations
 
 import json
+import os
+import re
+import sys
 from importlib import resources
 from pathlib import Path
 
+from . import config as config_module
+from . import ecosystem
 from .config import CONFIG_NAME, WikiConfig
 
 RUNNER = ".claude/hooks/pbrain_run.py"
@@ -90,6 +98,8 @@ def report(config) -> list[str]:
     lines.append(
         "Nothing was changed. Use --config, --wiki, --hooks, --pre-commit, --rules or --all."
     )
+    if not config.extends:
+        lines.append("To share knowledge with other projects: pbrain init --extends <git URL>.")
     return lines
 
 
@@ -110,7 +120,10 @@ def install_wiki(config) -> list[str]:
             done.append(f"kept     {relative}")
             continue
         text = _template(f"wiki/{name}")
-        if name == "SCHEMA.md":
+        shared = _shared_schema(config) if name == "SCHEMA.md" else None
+        if shared is not None:
+            text = shared
+        elif name == "SCHEMA.md":
             if config.wiki.sections != WikiConfig().sections:
                 listed = "\n".join(f"- `{section}`" for section in config.wiki.sections)
                 text = (
@@ -120,6 +133,125 @@ def install_wiki(config) -> list[str]:
         _write(path, text)
         done.append(f"created  {relative}")
     return done
+
+
+def _shared_schema(config) -> str | None:
+    """SCHEMA.md of the first ``extends`` repo that has one, so projects follow its conventions."""
+    for _source, source_config in ecosystem.source_configs(config):
+        candidate = source_config.wiki_dir / "SCHEMA.md"
+        if candidate.is_file():
+            return candidate.read_text(encoding="utf-8")
+    return None
+
+
+def _toml_value(value) -> str:
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(_toml_value(v) for v in value) + "]"
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _ensure_key(text: str, table: str, key: str, value) -> tuple[str, bool]:
+    """Add ``key = value`` under ``[table]`` unless the key is already there (never overwrites)."""
+    lines = text.split("\n")
+    header = f"[{table}]"
+    start = next((i for i, line in enumerate(lines) if line.strip() == header), None)
+    entry = f"{key} = {_toml_value(value)}"
+    if start is None:
+        return text.rstrip("\n") + f"\n\n{header}\n{entry}\n", True
+    end = next(
+        (i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith("[")), len(lines)
+    )
+    if any(re.match(rf"\s*{re.escape(key)}\s*=", line) for line in lines[start + 1 : end]):
+        return text, False
+    lines.insert(start + 1, entry)
+    return "\n".join(lines), True
+
+
+def _ensure_extends(text: str, entry: str) -> tuple[str, bool]:
+    """Add a top-level ``extends`` line; an existing uncommented one is left alone."""
+    lines = text.split("\n")
+    first_table = next((i for i, line in enumerate(lines) if line.lstrip().startswith("[")), None)
+    top = lines if first_table is None else lines[:first_table]
+    if any(re.match(r"\s*extends\s*=", line) for line in top):
+        return text, False
+    new = f"extends = {_toml_value([entry])}"
+    for i, line in enumerate(top):
+        if re.match(r"#\s*extends\s*=", line):
+            lines[i] = new
+            return "\n".join(lines), True
+    if first_table is None:
+        lines += ["", new, ""] if text.strip() else [new, ""]
+    else:
+        lines[first_table:first_table] = [new, ""]
+    return "\n".join(lines), True
+
+
+def link_extends(config, entry: str):
+    """Connect the project to a shared knowledge repo; return ``(new config, messages)``.
+
+    Writes ``extends`` into ``pbrain.toml`` (creating it if needed), fetches the repo, then adds
+    the wiki headings, page limits and cases directory of the shared repo for every key the
+    project has not set itself. Nothing already in ``pbrain.toml`` is overwritten.
+    """
+    path = config.root / CONFIG_NAME
+    created = not path.exists()
+    text = (
+        CONFIG_TEMPLATE.format(project=config.root.name)
+        if created
+        else path.read_text(encoding="utf-8")
+    )
+    text, added = _ensure_extends(text, entry)
+    messages = [f"created  {CONFIG_NAME}"] if created else []
+    if added:
+        messages.append(f"added    extends = {entry}")
+    elif entry not in config.extends:
+        messages.append(f"kept     extends in {CONFIG_NAME} (already set; add {entry} by hand)")
+    _write(path, text)
+    config = config_module.load(config.root)
+    messages += ecosystem.sync(config, force=True)
+    shared = [c for s, c in ecosystem.source_configs(config) if s["entry"] == entry]
+    if not shared:
+        messages.append("skipped  shared defaults: the shared repo is not available (retry sync)")
+        return config, messages
+    theirs, defaults = shared[0], WikiConfig()
+    wanted = [("wiki", "sections", list(theirs.wiki.sections))]
+    for key in ("max_lines", "max_age_days"):
+        if getattr(theirs.wiki, key) != getattr(defaults, key):
+            wanted.append(("wiki", key, getattr(theirs.wiki, key)))
+    if theirs.cases.dir == f"{theirs.wiki.dir}/cases":
+        # Same layout as the shared repo (cases next to the wiki), but in this project's wiki.
+        wanted.append(("cases", "dir", f"{config.wiki.dir}/cases"))
+    for table, key, value in wanted:
+        text, changed = _ensure_key(text, table, key, value)
+        if changed:
+            messages.append(f"added    [{table}] {key} (from the shared repo)")
+    _write(path, text)
+    return config_module.load(config.root), messages
+
+
+def register_hint(config, entry: str) -> list[str]:
+    """Tell the owner of the shared repo which line adds this project to its scan list."""
+    line = str(config.root)
+    for source, _config in ecosystem.source_configs(config):
+        if source["entry"] == entry and (source["path"] / "review_projects.txt").is_file():
+            return [
+                f"note     to scan this project with {source['name']}, its owner adds this line "
+                f"to review_projects.txt (pbrain never edits that repo): {line}"
+            ]
+    return [
+        "note     to include this project in a scheduled scan, add this line to the roots-file "
+        f"of the shared repo (pbrain scan --roots-file): {line}"
+    ]
+
+
+def _interactive() -> bool:
+    """True only when a person can answer: a terminal on both ends and not a CI run."""
+    if os.environ.get("CI"):
+        return False
+    try:
+        return sys.stdin.isatty() and sys.stdout.isatty()
+    except (AttributeError, ValueError):
+        return False
 
 
 def install_hooks(config) -> list[str]:
@@ -194,6 +326,20 @@ def install_rules(config, file_name: str) -> str:
 
 def _run(args, config) -> int:
     steps = []
+    entries = list(args.extends or [])
+    if (
+        not entries
+        and not args.no_extends
+        and (args.config or args.all)
+        and not config.extends
+        and _interactive()
+    ):
+        answer = input("Link to a shared knowledge repo? Git URL or path (Enter to skip): ")
+        if answer.strip():
+            entries.append(answer.strip())
+    for entry in entries:
+        config, messages = link_extends(config, entry)
+        steps += messages + register_hint(config, entry)
     if args.config or args.all:
         steps.append(install_config(config))
     if args.wiki or args.all:
@@ -217,6 +363,18 @@ def add_parser(subparsers) -> None:
     parser.add_argument("--pre-commit", action="store_true", help="Add pbrain to git pre-commit.")
     parser.add_argument(
         "--rules", metavar="FILE", help="Write agent rules into FILE between markers."
+    )
+    parser.add_argument(
+        "--extends",
+        metavar="URL",
+        action="append",
+        help="Link to a shared knowledge repo (git URL or path): write extends, sync, and take "
+        "the wiki headings and cases directory from it. Can be repeated.",
+    )
+    parser.add_argument(
+        "--no-extends",
+        action="store_true",
+        help="Do not ask about a shared knowledge repo on a terminal.",
     )
     parser.add_argument("--all", action="store_true", help="config + wiki + hooks + pre-commit.")
     parser.set_defaults(func=_run)
