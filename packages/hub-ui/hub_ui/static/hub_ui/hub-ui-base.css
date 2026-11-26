@@ -27,7 +27,8 @@ body { background-color: var(--hub-bg); color: var(--hub-text); }
 /* Navbar tạo stacking context cao hơn mọi phần dính của trang (tiêu đề sticky 1010, thead 2)
    để menu thả xuống không bị nội dung đè lên. */
 .navbar { background-color: var(--hub-primary); padding-top: .35rem; padding-bottom: .35rem; position: relative; z-index: 1030; }
-.navbar-brand, .nav-link { color: #fff !important; }
+/* Chỉ chữ của navbar: .nav-link của .nav-tabs/.nav-pills trong trang giữ màu của Bootstrap. */
+.navbar .navbar-brand, .navbar .nav-link { color: #fff !important; }
 .btn-primary { background-color: var(--hub-primary); border: none; }
 .btn-primary:hover, .btn-primary:focus { background-color: var(--hub-primary-dark); }
 .card { border-radius: var(--hub-radius); border: none; box-shadow: 0 2px 6px rgba(0, 0, 0, .08); }

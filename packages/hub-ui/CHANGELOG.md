@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.0
+
+Additive, plus one display fix found on the new showcase page.
+
+Added
+- Showcase page `hub_ui/showcase.html` with every control in a fixed block (`#sc-*`) on static fake data:
+  base CSS, number formatting, `data-hub-number`, `SearchCombobox`, `HubTabs`, `HubFilterBar`,
+  `HubDate`/`HubPeriod` + `period_filter.html`/`date_range_filter.html`, `HubTable` + `empty_state.html`,
+  `HubPager` + `pagination.html`, `UIDialog`. `?w=768` narrows the frame.
+- `hub_ui.urls` (`include("hub_ui.urls")`) serving `showcase/`; 404 unless `DEBUG` or a staff user.
+- `hub_ui.tools.showcase_snap`: headless Chrome/Edge screenshots (1280 and 768 wide), standard library only.
+- Test guard: every template in `hub_ui/templates/hub_ui/` must be included in the showcase and every public
+  JS module must appear in its script, so a new control cannot ship without being on the page.
+
+Fixed
+- `hub-ui-base.css` (since 0.3.0): the white text rule now only targets `.navbar .navbar-brand` and
+  `.navbar .nav-link`. Before, `.nav-tabs`/`.nav-pills` labels inside pages were white on white.
+
 ## 0.3.0
 
 Upgrade: to keep the 0.2 look, add `hub_ui/hub-ui-base.css` BEFORE `hub_ui/hub-ui.css` in your base

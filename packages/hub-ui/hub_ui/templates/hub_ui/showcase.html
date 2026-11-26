@@ -1,0 +1,357 @@
+{% load static hub_ui %}<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hub-ui showcase</title>
+{% comment %}
+Trang trưng bày MỌI control của hub-ui, dữ liệu giả tĩnh, không gọi API. Mục đích: mở thật và so ảnh
+trước/sau khi sửa control dùng chung (xem README, mục "So ảnh trước và sau").
+Control mới trong package PHẢI được thêm vào đây: tests/test_showcase.py kiểm tra mọi template
+hub_ui/*.html được include và mọi module JS public được nhắc tới.
+Bootstrap 5.3 + Bootstrap Icons nạp từ CDN (package không đóng gói chúng).
+{% endcomment %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="{% static 'hub_ui/hub-ui-base.css' %}">
+<link rel="stylesheet" href="{% static 'hub_ui/hub-ui.css' %}">
+<style>
+    .sc-demo-section { border-top: 2px solid #dee2e6; padding-top: 1rem; margin-top: 1.5rem; }
+    .sc-demo-section > h2 { font-size: 1.05rem; font-weight: 700; margin-bottom: .75rem; }
+    .sc-demo-section > h2 small { font-weight: 400; color: #6c757d; margin-left: .5rem; }
+    .sc-demo-out { font-family: monospace; font-size: .8rem; color: #495057; }
+    #showcase-frame { margin: 0 auto; }
+</style>
+</head>
+<body>
+{% include "hub_ui/ui_dialog.html" %}
+
+<nav class="navbar navbar-expand" id="sc-navbar">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="#">hub-ui showcase</a>
+        <ul class="navbar-nav me-auto">
+            <li class="nav-item"><a class="nav-link" href="#">Trang chủ</a></li>
+            <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Báo cáo</a>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="#"><i class="bi bi-table"></i> Bảng kê</a></li>
+                    <li><a class="dropdown-item" href="#"><i class="bi bi-graph-up"></i> Tổng hợp</a></li>
+                    <li class="dropdown-submenu">
+                        <a class="dropdown-item" href="#"><i class="bi bi-folder"></i> Khác <i class="bi bi-chevron-right submenu-arrow float-end"></i></a>
+                        <ul class="dropdown-menu"><li><a class="dropdown-item" href="#">Mục con</a></li></ul>
+                    </li>
+                </ul>
+            </li>
+            <li class="nav-item"><a class="nav-link" href="#">Cài đặt</a></li>
+        </ul>
+        <span class="navbar-text text-white small">Người dùng mẫu</span>
+    </div>
+</nav>
+
+<div class="container-fluid py-3" id="showcase-frame"{% if frame_width %} style="max-width: {{ frame_width }}px; border-inline: 1px dashed #adb5bd;"{% endif %}>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <h1 class="h4 mb-0">hub-ui {{ version }} showcase</h1>
+        <span class="text-muted small">Khung:</span>
+        <a class="btn btn-outline-secondary btn-sm" href="?">Đầy đủ</a>
+        <a class="btn btn-outline-secondary btn-sm" href="?w=768">768</a>
+        <a class="btn btn-outline-secondary btn-sm" href="?w=480">480</a>
+    </div>
+
+    <section class="sc-demo-section" id="sc-base">
+        <h2>Base CSS <small>hub-ui-base.css: nút, thẻ, bảng, navbar</small></h2>
+        <div class="d-flex gap-2 flex-wrap mb-3">
+            <button class="btn btn-primary">Primary</button>
+            <button class="btn btn-outline-primary">Outline</button>
+            <button class="btn btn-secondary">Secondary</button>
+            <button class="btn btn-success">Success</button>
+            <button class="btn btn-danger">Danger</button>
+            <button class="btn btn-primary btn-sm">Primary sm</button>
+            <button class="btn btn-primary" disabled>Disabled</button>
+        </div>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">Tiêu đề thẻ</div>
+                    <div class="card-body">Nội dung thẻ mẫu với <a href="#">liên kết</a>.</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <table class="table table-sm table-striped table-bordered mb-0">
+                    <thead><tr><th>Mã</th><th>Tên</th><th class="text-end">Số tiền</th></tr></thead>
+                    <tbody>
+                        <tr><td>A001</td><td>Mặt hàng mẫu 1</td><td class="text-end">1.250.000</td></tr>
+                        <tr><td>A002</td><td>Mặt hàng mẫu 2</td><td class="text-end">-340.500,5</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <section class="sc-demo-section" id="sc-number">
+        <h2>Định dạng số <small>HubFmt (JS), vn_number / format_vnd (template tag)</small></h2>
+        <table class="table table-sm table-bordered w-auto">
+            <thead>
+                <tr><th>Giá trị vào</th><th>format_vnd</th><th>vn_number:2</th><th>HubFmt.number</th><th>HubFmt.decimal(2)</th></tr>
+            </thead>
+            <tbody id="sc-number-rows">
+                {% for v in samples %}
+                <tr data-sample="{{ v }}">
+                    <td>{{ v|default:"(rỗng)" }}</td>
+                    <td class="text-end">{{ v|format_vnd }}</td>
+                    <td class="text-end">{{ v|vn_number:2 }}</td>
+                    <td class="text-end js-fmt-number"></td>
+                    <td class="text-end js-fmt-decimal"></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="mb-2">
+            <label class="form-label small" for="sc-number-input">Ô nhập số (HubNumber, data-hub-number, tối đa 2 số lẻ)</label>
+            <div class="d-flex gap-2 align-items-center">
+                <input type="text" id="sc-number-input" class="form-control form-control-sm w-auto text-end"
+                       inputmode="decimal" data-hub-number value="1234567,5">
+                <input type="text" id="sc-number-int" class="form-control form-control-sm w-auto text-end"
+                       inputmode="decimal" data-hub-number="0" placeholder="số nguyên">
+                <span class="sc-demo-out" id="sc-number-out"></span>
+            </div>
+        </div>
+    </section>
+
+    <section class="sc-demo-section" id="sc-combobox">
+        <h2>SearchCombobox <small>picker với nguồn tĩnh, có tạo mới; select data-combobox</small></h2>
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label small">Picker (nguồn tĩnh, tạo mới)</label>
+                <div id="sc-picker-host"></div>
+                <div class="sc-demo-out mt-1" id="sc-picker-out"></div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small" for="sc-select-combo">select data-combobox</label>
+                <select id="sc-select-combo" data-combobox data-create class="form-select form-select-sm">
+                    <option value="">Chọn nhóm...</option>
+                    <option value="1">Nhóm một</option>
+                    <option value="2">Nhóm hai</option>
+                    <option value="3">Nhóm ba</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small" for="sc-attach-input">attach trên ô gõ tự do</label>
+                <input type="text" id="sc-attach-input" class="form-control form-control-sm" placeholder="Gõ mã hoặc tên...">
+            </div>
+        </div>
+    </section>
+
+    <section class="sc-demo-section" id="sc-tabs">
+        <h2>HubTabs <small>tab theo #hash (nav-tabs trong trang giữ màu Bootstrap)</small></h2>
+        <ul class="nav nav-tabs" id="sc-tabs-nav">
+            <li class="nav-item"><a class="nav-link" href="#" data-tab="a">Tab A</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" data-tab="b">Tab B</a></li>
+            <li class="nav-item"><a class="nav-link" href="#" data-tab="c">Tab C</a></li>
+        </ul>
+        <div class="border border-top-0 p-3 small" id="sc-tabs-body"></div>
+    </section>
+
+    <section class="sc-demo-section" id="sc-filterbar">
+        <h2>HubFilterBar <small>thanh lọc, thu gọn khi tràn một dòng, chip tóm tắt</small></h2>
+        <div class="hub-filterbar" data-hub-filterbar data-key="showcase" data-default="collapsed" id="sc-filterbar-root">
+            <form onsubmit="return false;">
+                <div class="hub-filterbar-fields">
+                    <div class="hub-field"><label class="form-label" for="sc-f-q">Tìm</label>
+                        <input type="text" id="sc-f-q" class="form-control form-control-sm" placeholder="Mã, tên..."></div>
+                    <div class="hub-field"><label class="form-label" for="sc-f-kind">Loại</label>
+                        <select id="sc-f-kind" class="form-select form-select-sm"><option value="">Tất cả</option><option value="1" selected>Loại một</option><option value="2">Loại hai</option></select></div>
+                    <div class="hub-field"><label class="form-label" for="sc-f-st">Trạng thái</label>
+                        <select id="sc-f-st" class="form-select form-select-sm"><option value="">Tất cả</option><option value="1" selected>Mở</option></select></div>
+                    <div class="hub-field"><label class="form-label" for="sc-f-a">Kho</label>
+                        <select id="sc-f-a" class="form-select form-select-sm"><option value="">Tất cả</option><option value="1" selected>Kho chính</option></select></div>
+                    <div class="hub-field"><label class="form-label" for="sc-f-b">Nhóm</label>
+                        <select id="sc-f-b" class="form-select form-select-sm"><option value="">Tất cả</option><option value="1" selected>Nhóm một</option></select></div>
+                    <div class="hub-field"><label class="form-label" for="sc-f-c">Người lập</label>
+                        <select id="sc-f-c" class="form-select form-select-sm"><option value="">Tất cả</option><option value="1" selected>Người mẫu</option></select></div>
+                    <div class="hub-field"><label class="form-label" for="sc-f-d">Ghi chú</label>
+                        <input type="text" id="sc-f-d" class="form-control form-control-sm" value="ghi chú mẫu"></div>
+                    <div class="hub-field"><label class="form-label" for="sc-f-e">Mã phụ</label>
+                        <input type="text" id="sc-f-e" class="form-control form-control-sm" value="X-01"></div>
+                </div>
+                <div data-hub-chips class="hub-chips"></div>
+                <div class="hub-filterbar-buttons">
+                    <button type="button" class="btn btn-outline-secondary btn-sm hub-filterbar-toggle" data-hub-filter-toggle hidden>
+                        <i class="bi bi-chevron-down"></i><i class="bi bi-chevron-up"></i> Bộ lọc
+                    </button>
+                    <button type="submit" class="btn btn-primary btn-sm" data-loading>
+                        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span><i class="bi bi-search"></i> Xem
+                    </button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section class="sc-demo-section" id="sc-date-period">
+        <h2>HubDate / HubPeriod <small>ô ngày dd/mm/yy; kỳ tháng, khoảng ngày, một ngày</small></h2>
+        <div class="row g-3 align-items-end">
+            <div class="col-auto">
+                <label class="form-label small" for="sc-date-iso">HubDate (hidden ISO + ô dd/mm/yy + nút lịch)</label>
+                <div class="input-group input-group-sm">
+                    <input type="hidden" id="sc-date-iso" value="2026-03-15">
+                    <input type="text" class="form-control hub-date" data-hub-date-for="sc-date-iso" inputmode="numeric" placeholder="dd/mm/yy" autocomplete="off" aria-label="Ngày">
+                    <button type="button" class="btn btn-outline-secondary hub-date-pick" data-hub-date-pick="sc-date-iso" aria-label="Chọn ngày"><i class="bi bi-calendar3"></i></button>
+                </div>
+            </div>
+            <div class="col-auto">{% include "hub_ui/period_filter.html" with pf_mode="month" pf_id="scpm" pf_month=3 pf_year=2026 pf_year_from=2024 pf_year_to=2027 %}</div>
+            <div class="col-auto">{% include "hub_ui/period_filter.html" with pf_mode="day" pf_id="scpd" pf_value="2026-03-15" %}</div>
+            <div class="col-12">{% include "hub_ui/period_filter.html" with pf_mode="range" pf_id="scpr" pf_from="2026-03-01" pf_to="2026-03-31" pf_months=6 %}</div>
+        </div>
+        <div class="sc-demo-out mt-2" id="sc-date-out"></div>
+        <h3 class="h6 mt-3" id="sc-date-range-filter">date_range_filter.html</h3>
+        <div class="row g-3">
+            {% include "hub_ui/date_range_filter.html" with dr_id="scdr" dr_from="2026-03-01" dr_to="2026-03-31" dr_months=3 dr_col="col-md-3" dr_size="sm" %}
+        </div>
+    </section>
+
+    <section class="sc-demo-section" id="sc-table">
+        <h2>HubTable <small>có dữ liệu (sắp xếp, tfoot) và rỗng</small></h2>
+        <div class="hub-table-toolbar">
+            <input type="search" id="sc-table-filter" class="form-control form-control-sm" style="max-width: 16rem;" placeholder="Lọc dòng (không dấu)">
+            <div class="hub-toolbar-right"><button class="btn btn-outline-secondary btn-sm"><i class="bi bi-download"></i> Xuất</button></div>
+        </div>
+        <div class="hub-table-wrap" data-hub-table data-fit="off" id="sc-table-data">
+            <table class="table table-sm table-hover">
+                <thead><tr><th data-sort="text">Mã</th><th data-sort="text">Tên</th><th data-sort="date">Ngày</th><th data-sort="num" class="text-end">Số tiền</th></tr></thead>
+                <tbody>
+                    <tr><td>C03</td><td>Mặt hàng ba</td><td>05/03/2026</td><td class="num text-end">98.000,5</td></tr>
+                    <tr><td>A01</td><td>Mặt hàng một</td><td>20/02/2026</td><td class="num text-end">1.250.000</td></tr>
+                    <tr><td>B02</td><td>Mặt hàng hai</td><td>11/04/2026</td><td class="num text-end">-340.500</td></tr>
+                </tbody>
+                <tfoot><tr><td colspan="3">Tổng</td><td class="num text-end">1.007.500</td></tr></tfoot>
+            </table>
+        </div>
+        <div class="hub-table-wrap mt-3" data-hub-table data-fit="off" id="sc-table-empty">
+            <table class="table table-sm"><thead><tr><th>Mã</th><th>Tên</th><th>Số tiền</th></tr></thead><tbody id="sc-table-empty-body"></tbody></table>
+        </div>
+        <div class="hub-table-wrap mt-3" data-hub-table data-fit="off" id="sc-table-loading">
+            <table class="table table-sm"><thead><tr><th>Mã</th><th>Tên</th></tr></thead>
+                <tbody><tr><td>X</td><td>Đang tải (is-loading)</td></tr><tr><td>Y</td><td>...</td></tr></tbody></table>
+        </div>
+        <h3 class="h6 mt-3" id="sc-empty-state">empty_state.html</h3>
+        {% include "hub_ui/empty_state.html" with es_title="Chưa có dữ liệu" es_text="Chọn kỳ rồi bấm Xem." %}
+    </section>
+
+    <section class="sc-demo-section" id="sc-pager">
+        <h2>HubPager / pagination.html <small>phân trang client và server</small></h2>
+        <div class="small text-muted">pagination.html (Django Paginator, trang 3/13):</div>
+        {% include "hub_ui/pagination.html" with page_obj=page_obj pg_sizes=pg_sizes %}
+        <div class="small text-muted mt-3">HubPager.attach (client, 120 dòng, 50 dòng/trang):</div>
+        <div id="sc-pager-host"></div>
+        <div class="sc-demo-out" id="sc-pager-out"></div>
+    </section>
+
+    <section class="sc-demo-section" id="sc-dialog">
+        <h2>UIDialog <small>alert / confirm / prompt / toast (bấm để mở)</small></h2>
+        <div class="d-flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-outline-primary btn-sm" id="sc-dlg-alert">alert</button>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="sc-dlg-alert-detail">alert + detail</button>
+            <button type="button" class="btn btn-outline-warning btn-sm" id="sc-dlg-confirm">confirm</button>
+            <button type="button" class="btn btn-outline-danger btn-sm" id="sc-dlg-confirm-danger">confirm danger</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="sc-dlg-prompt">prompt</button>
+            <button type="button" class="btn btn-outline-success btn-sm" id="sc-dlg-toast">toast</button>
+        </div>
+        <div class="sc-demo-out mt-2" id="sc-dialog-out"></div>
+    </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{% static 'hub_ui/hub-ui.js' %}"></script>
+<script src="{% static 'hub_ui/search-combobox.js' %}"></script>
+<script>
+(function () {
+    "use strict";
+    const $ = (id) => document.getElementById(id);
+
+    // --- Định dạng số: HubFmt cạnh bản server
+    document.querySelectorAll("#sc-number-rows tr").forEach((tr) => {
+        const raw = tr.dataset.sample;
+        tr.querySelector(".js-fmt-number").textContent = HubFmt.number(raw);
+        tr.querySelector(".js-fmt-decimal").textContent = HubFmt.decimal(raw, 2);
+    });
+    // HubNumber: đọc giá trị số khi gõ
+    const numOut = () => { $("sc-number-out").textContent = "get() = " + JSON.stringify(HubNumber.get($("sc-number-input"))); };
+    $("sc-number-input").addEventListener("input", numOut);
+    HubNumber.set($("sc-number-input"), 1234567.5);
+    numOut();
+    HubState.set("showcase.touched", "1");
+
+    // --- SearchCombobox
+    const ITEMS = [
+        { value: "1", label: "Mặt hàng một", sub: "A01" },
+        { value: "2", label: "Mặt hàng hai", sub: "B02" },
+        { value: "3", label: "Mặt hàng ba", sub: "C03" },
+        { value: "4", label: "Bàn làm việc", sub: "D04" },
+    ];
+    SearchCombobox.register("showcase-items", { localItems: () => ITEMS });
+    const pk = SearchCombobox.picker({
+        localItems: () => ITEMS, placeholder: "Chọn hoặc gõ để tạo mới...", create: true,
+        onCreate: (text) => ({ value: "new-" + text, label: text }),
+        onChange: (value) => { $("sc-picker-out").textContent = "value = " + JSON.stringify(value); },
+    });
+    $("sc-picker-host").appendChild(pk.el);
+    SearchCombobox.attach($("sc-attach-input"), { source: "showcase-items" });
+
+    // --- HubTabs
+    const bodies = { a: "Nội dung tab A.", b: "Nội dung tab B.", c: "Nội dung tab C." };
+    const paintTabs = (k) => {
+        document.querySelectorAll("#sc-tabs-nav [data-tab]").forEach((a) => a.classList.toggle("active", a.dataset.tab === k));
+        $("sc-tabs-body").textContent = bodies[k];
+    };
+    const tabs = HubTabs.hash(["a", "b", "c"], { store: "showcase.tab", onChange: paintTabs });
+    paintTabs(tabs.current);
+    document.querySelectorAll("#sc-tabs-nav [data-tab]").forEach((a) => a.addEventListener("click", (e) => {
+        e.preventDefault(); tabs.select(a.dataset.tab);
+    }));
+
+    // --- HubFilterBar: nút Xem bật spinner rồi trả lại (không gọi server)
+    $("sc-filterbar-root").querySelector("form").addEventListener("submit", () => {
+        setTimeout(() => HubFilterBar.busy("#sc-filterbar-root", false), 600);
+    });
+
+    // --- HubDate / HubPeriod (các khối period_filter.html tự khởi tạo theo data-hub-period)
+    const dateOut = () => { $("sc-date-out").textContent = "ISO = " + $("sc-date-iso").value + " | kỳ tháng = " + $("scpm_month").value + "/" + $("scpm_year").value; };
+    HubDate.set($("sc-date-iso"), "2026-03-15", false);
+    $("sc-date-iso").addEventListener("change", dateOut);
+    $("scpm").addEventListener("change", dateOut);
+    document.querySelectorAll("[data-hub-period=month] [data-period-prev], [data-hub-period=month] [data-period-next]").forEach((b) => b.addEventListener("click", () => setTimeout(dateOut, 0)));
+    document.addEventListener("DOMContentLoaded", () => setTimeout(dateOut, 0));
+    void HubPeriod.preset("this_month");
+
+    // --- HubTable: rỗng + đang tải, HubDom lọc không dấu
+    HubTable.empty("sc-table-empty-body", 3, "Không có dữ liệu", "Thử đổi bộ lọc.");
+    HubTable.loading("sc-table-loading", true);
+    $("sc-table-filter").addEventListener("input", () => HubDom.filterRows("sc-table-filter", "#sc-table-data tbody tr"));
+
+    // --- HubPager client
+    const out = $("sc-pager-out");
+    const pager = HubPager.attach($("sc-pager-host"), {
+        total: 120, pageSize: 50, page: 1, sizes: [50, 100, 300],
+        onChange: ({ page, pageSize }) => { out.textContent = "page=" + page + " pageSize=" + pageSize; },
+    });
+    out.textContent = "offset=" + pager.get().offset + " pageSize=" + pager.get().pageSize;
+
+    // --- UIDialog
+    const say = (text) => { $("sc-dialog-out").textContent = text; };
+    $("sc-dlg-alert").addEventListener("click", async () => { await UIDialog.alert("Nội dung thông báo ngắn.\nDòng thứ hai."); say("alert đã đóng"); });
+    $("sc-dlg-alert-detail").addEventListener("click", async () => {
+        await UIDialog.alert("Có lỗi khi lưu.", { variant: "danger", detail: Array.from({ length: 30 }, (_, i) => "Dòng chi tiết " + (i + 1)).join("\n") });
+        say("alert detail đã đóng");
+    });
+    $("sc-dlg-confirm").addEventListener("click", async () => { say("confirm = " + await UIDialog.confirm("Tiếp tục thao tác này?")); });
+    $("sc-dlg-confirm-danger").addEventListener("click", async () => {
+        say("confirm danger = " + await UIDialog.confirm("Xóa bản ghi mẫu?", { variant: "danger", okText: "Xóa" }));
+    });
+    $("sc-dlg-prompt").addEventListener("click", async () => { say("prompt = " + JSON.stringify(await UIDialog.prompt("Nhập lý do:", { placeholder: "Lý do..." }))); });
+    $("sc-dlg-toast").addEventListener("click", () => UIDialog.toast("Đã lưu (toast mẫu)."));
+
+    // HubApi: chỉ kiểm có mặt (CSRF/fetch, showcase không gọi mạng)
+    window.__showcaseModules = { HubApi: typeof HubApi, HubDom: typeof HubDom };
+})();
+</script>
+</body>
+</html>

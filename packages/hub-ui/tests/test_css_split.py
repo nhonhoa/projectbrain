@@ -6,6 +6,11 @@ import re
 HERE = pathlib.Path(__file__).parent
 STATIC = HERE.parent / "hub_ui" / "static" / "hub_ui"
 OLD = HERE / "fixtures" / "hub-ui-0.2.0.css"      # frozen copy of the 0.2.0 stylesheet
+# Selectors changed on purpose after 0.2.0, old -> new (see CHANGELOG). Nothing else may move.
+RENAMED = {
+    ("", ".navbar-brand"): ("", ".navbar .navbar-brand"),   # 0.4.0: white text only inside the navbar
+    ("", ".nav-link"): ("", ".navbar .nav-link"),
+}
 
 
 def rules(css):
@@ -40,7 +45,7 @@ def test_every_020_selector_lives_in_one_of_the_new_files():
     base = rules((STATIC / "hub-ui-base.css").read_text(encoding="utf-8"))
     comp = rules((STATIC / "hub-ui.css").read_text(encoding="utf-8"))
     assert len(old) > 150
-    missing = [k for k in old if k not in base and k not in comp]
+    missing = [k for k in old if RENAMED.get(k, k) not in base and RENAMED.get(k, k) not in comp]
     assert not missing, missing
 
 
@@ -55,7 +60,7 @@ def test_declarations_survive_apart_from_var_fallbacks():
     for key, decl in old.items():
         if key[1] == ":root":
             continue          # tokens moved to the base file; components carry fallbacks instead
-        assert strip(both[key]) == decl, key
+        assert strip(both[RENAMED.get(key, key)]) == decl, key
 
 
 def test_components_file_only_styles_package_classes():
@@ -77,5 +82,6 @@ def test_components_use_token_fallbacks():
 def test_base_file_carries_the_opinionated_look():
     base = rules((STATIC / "hub-ui-base.css").read_text(encoding="utf-8"))
     sels = {k[1] for k in base}
-    for s in (":root", "html", "body", ".navbar", ".nav-link", ".btn-primary", ".card", ".dropdown-menu"):
+    for s in (":root", "html", "body", ".navbar", ".navbar .nav-link", ".btn-primary", ".card",
+              ".dropdown-menu"):
         assert s in sels, s

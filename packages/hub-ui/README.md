@@ -82,6 +82,30 @@ Number rounding (Python and JS alike): half away from zero on the decimal as wri
 
 Template tags (`{% load hub_ui %}`): filters `format_vnd`, `vn_number`; tag `query_replace`.
 
+## Showcase page
+
+One page with every control, static fake data, for opening the real thing. Mount it in the host
+project's URLconf (it is only served when `DEBUG` is on or the user is staff, otherwise 404):
+
+```python
+urlpatterns += [path("hub-ui/", include("hub_ui.urls"))]   # -> /hub-ui/showcase/
+```
+
+`?w=768` (or the width buttons) shows the narrow layout. Bootstrap and Bootstrap Icons come from a CDN.
+A new template or public JS module must be added to the page: `tests/test_showcase.py` fails otherwise.
+
+### So ảnh trước và sau
+
+Run the dev server, then before touching a shared control, with the old version installed:
+
+```
+python -m hub_ui.tools.showcase_snap http://127.0.0.1:8000/hub-ui/showcase/ shots/before
+```
+
+Change the control, bump the version, snapshot again into `shots/after`, and compare
+`showcase-1280.png` and `showcase-768.png` by eye. The browser is found via the `CHROME` environment
+variable or the usual Chrome/Edge install paths.
+
 ## Versioning
 
 Semantic versions, one git tag per release: `hub-ui-vX.Y.Z`. Pin the tag in your requirements.
