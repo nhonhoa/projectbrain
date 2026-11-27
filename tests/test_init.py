@@ -271,3 +271,59 @@ def test_tty_prompt_skippable_and_disabled_by_flag(tmp_path, run_cli, monkeypatc
 def test_ci_env_is_not_interactive(monkeypatch):
     monkeypatch.setenv("CI", "1")
     assert init._interactive() is False
+
+
+def _make_python_project(root, helpers):
+    helpers.init_repo(root)
+    (root / "myapp").mkdir()
+    (root / "myapp" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "tests").mkdir()
+    (root / "CLAUDE.md").write_text("# Rules\n", encoding="utf-8")
+
+
+def test_detect_finds_roots_rules_and_git(tmp_path, helpers):
+    _make_python_project(tmp_path, helpers)
+    facts = init.detect(tmp_path)
+    assert facts["roots"] == ["myapp"]
+    assert facts["rules"] == "CLAUDE.md"
+    assert facts["git"] is True
+
+
+def test_yes_takes_every_default_without_asking(tmp_path, run_cli, helpers, monkeypatch):
+    _make_python_project(tmp_path, helpers)
+    monkeypatch.setattr("builtins.input", lambda *_: (_ for _ in ()).throw(AssertionError("asked")))
+    code, _, _ = run_cli("--root", tmp_path, "init", "--yes")
+    assert code == 0
+    for name in (
+        "pbrain.toml",
+        "docs/wiki/index.md",
+        ".claude/settings.json",
+        ".git/hooks/pre-commit",
+    ):
+        assert (tmp_path / name).is_file(), name
+    assert 'roots = ["myapp"]' in (tmp_path / "pbrain.toml").read_text(encoding="utf-8")
+    assert init.MARK_START in (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
+
+
+def test_wizard_enter_accepts_and_n_declines(tmp_path, run_cli, helpers, monkeypatch):
+    _make_python_project(tmp_path, helpers)
+    monkeypatch.setattr(init, "_interactive", lambda: True)
+    # config=Enter, roots=Enter, wiki=Enter, hooks=n, pre-commit=Enter, rules=n, extends=Enter
+    answers = iter(["", "", "", "n", "", "n", ""])
+    monkeypatch.setattr("builtins.input", lambda *_: next(answers))
+    code, _, _ = run_cli("--root", tmp_path, "init")
+    assert code == 0
+    assert (tmp_path / "pbrain.toml").is_file()
+    assert (tmp_path / "docs/wiki/SCHEMA.md").is_file()
+    assert (tmp_path / ".git/hooks/pre-commit").is_file()
+    assert not (tmp_path / ".claude").exists()
+    assert init.MARK_START not in (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
+
+
+def test_wizard_custom_roots(tmp_path, run_cli, helpers, monkeypatch):
+    _make_python_project(tmp_path, helpers)
+    monkeypatch.setattr(init, "_interactive", lambda: True)
+    answers = iter(["", "app, lib", "n", "n", "n", "n", ""])
+    monkeypatch.setattr("builtins.input", lambda *_: next(answers))
+    run_cli("--root", tmp_path, "init")
+    assert 'roots = ["app", "lib"]' in (tmp_path / "pbrain.toml").read_text(encoding="utf-8")

@@ -34,7 +34,9 @@ that.
 ```
 pip install git+https://github.com/nhonhoa/projectbrain
 cd your-project
-pbrain init            # report only: shows what exists, changes nothing
+pbrain init            # on a terminal: wizard (detects the project, Enter accepts the defaults)
+                       # elsewhere (CI, pipes): report only, changes nothing
+pbrain init --yes      # same wizard, no questions: take every default
 pbrain init --all      # pbrain.toml, wiki skeleton, agent hooks, git pre-commit
 pbrain init --rules CLAUDE.md
 ```

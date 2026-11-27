@@ -9,6 +9,9 @@ leaves a working setup:
 - ``--pre-commit``  add ``pbrain check --staged`` to the git pre-commit hook
 - ``--rules FILE``  write the agent rules between markers in FILE (e.g. CLAUDE.md)
 - ``--all``         config, wiki, hooks and pre-commit
+- no flags on a terminal (or ``--yes`` anywhere): a short wizard that detects the project (source
+  roots, rules file, git) and asks one yes/no question per step; the default is the common choice
+  (everything on, Enter accepts). ``--yes`` takes every default without asking.
 - ``--extends URL`` link the project to a shared knowledge repo (repeatable): writes ``extends``,
   fetches the repo and fills in the wiki headings and cases directory from its ``pbrain.toml``.
   On a terminal, ``--config``/``--all`` ask for a repo when none is set (``--no-extends`` skips).
@@ -62,7 +65,7 @@ dir = "docs/wiki"
 # Python file exposing REUSE_CATALOG; leave empty until the project has shared components.
 catalog = ""
 # Directories to index for `pbrain reuse` and duplicate detection.
-roots = []
+roots = {roots}
 """
 
 
@@ -103,11 +106,14 @@ def report(config) -> list[str]:
     return lines
 
 
-def install_config(config) -> str:
+def install_config(config, roots=()) -> str:
     path = config.root / CONFIG_NAME
     if path.exists():
         return f"kept     {CONFIG_NAME}"
-    _write(path, CONFIG_TEMPLATE.format(project=config.root.name))
+    _write(
+        path,
+        CONFIG_TEMPLATE.format(project=config.root.name, roots=_toml_value(list(roots))),
+    )
     return f"created  {CONFIG_NAME}"
 
 
@@ -196,7 +202,7 @@ def link_extends(config, entry: str):
     path = config.root / CONFIG_NAME
     created = not path.exists()
     text = (
-        CONFIG_TEMPLATE.format(project=config.root.name)
+        CONFIG_TEMPLATE.format(project=config.root.name, roots="[]")
         if created
         else path.read_text(encoding="utf-8")
     )
@@ -252,6 +258,103 @@ def _interactive() -> bool:
         return sys.stdin.isatty() and sys.stdout.isatty()
     except (AttributeError, ValueError):
         return False
+
+
+SKIP_DIRS = {
+    "node_modules",
+    "venv",
+    "env",
+    "dist",
+    "build",
+    "docs",
+    "tests",
+    "test",
+    "scripts",
+    "migrations",
+    "static",
+    "templates",
+    "data",
+    "certs",
+    "site-packages",
+}
+
+
+def detect(root: Path) -> dict:
+    """Facts about the project that decide the wizard defaults (read-only, no network)."""
+    roots = []
+    src = root / "src"
+    if src.is_dir():
+        roots.append("src")
+    for child in sorted(root.iterdir()):
+        name = child.name
+        if not child.is_dir() or name.startswith((".", "_")) or name in SKIP_DIRS:
+            continue
+        if name.endswith((".egg-info", ".bak")) or name == "src":
+            continue
+        if (child / "__init__.py").exists() or (child / "manage.py").exists():
+            roots.append(name)
+        elif any(
+            grandchild.is_dir() and (grandchild / "__init__.py").exists()
+            for grandchild in child.iterdir()
+            if not grandchild.name.startswith(".")
+        ):
+            roots.append(name)
+    rules = next((n for n in ("CLAUDE.md", "AGENTS.md") if (root / n).exists()), "CLAUDE.md")
+    return {
+        "roots": roots,
+        "rules": rules,
+        "git": (root / ".git").is_dir(),
+        "docs": (root / "docs").is_dir(),
+    }
+
+
+def _ask(question: str, default: str = "y") -> bool:
+    hint = "Y/n" if default == "y" else "y/N"
+    answer = input(f"{question} [{hint}] ").strip().lower()
+    return default == "y" if not answer else answer.startswith("y")
+
+
+def _wizard(config, assume_yes: bool, no_extends: bool):
+    """Ask what to install; return ``(args-like choices, config)``. Defaults are the common case."""
+    facts = detect(config.root)
+    choice = {
+        "config": True,
+        "wiki": True,
+        "hooks": True,
+        "pre_commit": facts["git"],
+        "rules": facts["rules"],
+        "roots": facts["roots"],
+        "extends": None,
+    }
+    if assume_yes:
+        return choice
+    print(f"pbrain init: {config.root}")
+    print("Enter accepts the default in [brackets].")
+    print()
+    choice["config"] = _ask(f"Create {CONFIG_NAME} (project settings)?")
+    if choice["config"] and not (config.root / CONFIG_NAME).exists():
+        shown = ", ".join(facts["roots"]) or "none found"
+        answer = input(f"  Code folders to index for `pbrain reuse` [{shown}]: ").strip()
+        if answer:
+            choice["roots"] = [part.strip() for part in answer.split(",") if part.strip()]
+    choice["wiki"] = _ask(f"Create the wiki skeleton ({config.wiki.dir}/)?")
+    choice["hooks"] = _ask(
+        "Install Claude Code hooks (.claude/)? They remind the agent to read the "
+        "wiki and run `pbrain check`."
+    )
+    if facts["git"]:
+        choice["pre_commit"] = _ask("Add `pbrain check --staged` to the git pre-commit hook?")
+    else:
+        print("  (no git repository: skipping the pre-commit hook)")
+    if _ask(f"Write the agent rules into {facts['rules']}?"):
+        answer = input(f"  File [{facts['rules']}]: ").strip()
+        choice["rules"] = answer or facts["rules"]
+    else:
+        choice["rules"] = None
+    if not config.extends and not no_extends:
+        answer = input("Shared knowledge repo (git URL or path, Enter to skip): ").strip()
+        choice["extends"] = answer or None
+    return choice
 
 
 def install_hooks(config) -> list[str]:
@@ -326,10 +429,30 @@ def install_rules(config, file_name: str) -> str:
 
 def _run(args, config) -> int:
     steps = []
+    flags = (
+        args.config,
+        args.wiki,
+        args.hooks,
+        args.pre_commit,
+        args.rules,
+        args.all,
+        args.extends,
+    )
+    roots = ()
+    wizard = args.yes or (not any(flags) and _interactive())
+    if wizard:
+        choice = _wizard(config, args.yes, args.no_extends)
+        args.config, args.wiki = choice["config"], choice["wiki"]
+        args.hooks, args.pre_commit = choice["hooks"], choice["pre_commit"]
+        args.rules = args.rules or choice["rules"]
+        roots = choice["roots"]
+        if choice["extends"]:
+            args.extends = [choice["extends"]]
     entries = list(args.extends or [])
     if (
         not entries
         and not args.no_extends
+        and not wizard
         and (args.config or args.all)
         and not config.extends
         and _interactive()
@@ -341,7 +464,7 @@ def _run(args, config) -> int:
         config, messages = link_extends(config, entry)
         steps += messages + register_hint(config, entry)
     if args.config or args.all:
-        steps.append(install_config(config))
+        steps.append(install_config(config, roots))
     if args.wiki or args.all:
         steps += install_wiki(config)
     if args.hooks or args.all:
@@ -375,6 +498,12 @@ def add_parser(subparsers) -> None:
         "--no-extends",
         action="store_true",
         help="Do not ask about a shared knowledge repo on a terminal.",
+    )
+    parser.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help="Run the wizard without asking: detect the project and take every default.",
     )
     parser.add_argument("--all", action="store_true", help="config + wiki + hooks + pre-commit.")
     parser.set_defaults(func=_run)
