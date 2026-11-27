@@ -129,7 +129,17 @@ def _command(args, config) -> int:
         except OSError as error:
             print(f"pbrain scan: cannot read {args.roots_file}: {error}", file=sys.stderr)
             return 2
-    elif not explicit:
+    if args.all:
+        from . import registry
+
+        known = {registry.key(r) for r in roots}
+        for entry in registry.load():
+            if not registry.has_config(entry["root"]):
+                warnings.append(f"skipped {entry['root']}: no {config_module.CONFIG_NAME}")
+            elif registry.key(entry["root"]) not in known:
+                known.add(registry.key(entry["root"]))
+                roots.append(Path(entry["root"]))
+    if not roots and not args.roots_file and not args.all:
         roots = [config.root]
     try:
         configs = review.load_projects(roots[0], roots[1:]) if roots else []
@@ -180,6 +190,9 @@ def add_parser(subparsers):
     )
     parser.add_argument("roots", nargs="*", help="Project roots (default: the current project).")
     parser.add_argument("--roots-file", help="File with one project root per line (# comments).")
+    parser.add_argument(
+        "--all", action="store_true", help="Every project in the registry (`pbrain projects`)."
+    )
     parser.add_argument("--state", help="State file (default: ~/.cache/pbrain/scan-state.json).")
     parser.add_argument("--no-sync", action="store_true", help="Do not fetch `extends` repos.")
     parser.add_argument("--json", action="store_true", help="Print the result as JSON.")

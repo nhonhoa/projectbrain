@@ -236,18 +236,19 @@ def link_extends(config, entry: str):
 
 
 def register_hint(config, entry: str) -> list[str]:
-    """Tell the owner of the shared repo which line adds this project to its scan list."""
+    """Say how the project reaches the review page and scans (the registry does it here)."""
     line = str(config.root)
+    note = (
+        "note     this machine lists the project by itself (~/.pbrain/projects.json: review page,"
+        " pbrain scan --all)"
+    )
     for source, _config in ecosystem.source_configs(config):
         if source["entry"] == entry and (source["path"] / "review_projects.txt").is_file():
             return [
-                f"note     to scan this project with {source['name']}, its owner adds this line "
-                f"to review_projects.txt (pbrain never edits that repo): {line}"
+                f"{note}; review_projects.txt of {source['name']} is deprecated, only for machines"
+                f" without the registry (pbrain never edits that repo): {line}"
             ]
-    return [
-        "note     to include this project in a scheduled scan, add this line to the roots-file "
-        f"of the shared repo (pbrain scan --roots-file): {line}"
-    ]
+    return [note]
 
 
 def _interactive() -> bool:
@@ -473,9 +474,34 @@ def _run(args, config) -> int:
         steps.append(install_pre_commit(config))
     if args.rules:
         steps.append(install_rules(config, args.rules))
-    for line in steps or report(config):
+    lines = steps or report(config)
+    lines += register_project(config)
+    for line in lines:
         print(line)
     return 0
+
+
+def register_project(config) -> list[str]:
+    """Put a project that has a pbrain.toml on the machine's review page (registry + server)."""
+    from . import registry, serve
+
+    if not registry.has_config(config.root):
+        return []
+    try:
+        entry, added = registry.add(config.root)
+    except (OSError, ValueError, TimeoutError) as error:
+        return [f"registry: not updated ({error})"]
+    lines = [
+        f"registry: {'added' if added else 'already lists'} {entry['name']} ({registry.path()})"
+    ]
+    outcome = serve.ensure_server()
+    if outcome == "off":
+        lines.append("review page: autostart off (PBRAIN_AUTOSERVE=0 or CI); `pbrain serve`")
+    elif outcome == "failed":
+        lines.append("review page: could not start it; try `pbrain serve --status`")
+    else:
+        lines.append(f"review page: {serve.url()} (the project is listed there)")
+    return lines
 
 
 def add_parser(subparsers) -> None:

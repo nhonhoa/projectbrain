@@ -49,6 +49,13 @@ def session_start(config, payload: dict) -> int:
     from . import wiki
 
     lines = []
+    try:  # keep this project on the machine's review page, and the page running
+        from . import registry, serve
+
+        registry.remember(config)
+        serve.ensure_server()
+    except Exception:  # noqa: BLE001 - hooks fail open
+        pass
     try:
         ecosystem.sync(config)
         shared = ecosystem.describe(config)

@@ -24,6 +24,8 @@ COMMAND_MODULES = (
     "pbrain.hooks",
     "pbrain.review",
     "pbrain.scan",
+    "pbrain.registry",
+    "pbrain.serve",
 )
 
 
@@ -52,7 +54,14 @@ def main(argv=None) -> int:
     except (OSError, ValueError) as error:  # unreadable or invalid pbrain.toml
         print(f"pbrain: cannot read {config_module.CONFIG_NAME}: {error}", file=sys.stderr)
         return 0 if args.command == "hook" else 2  # hooks fail open
-    return int(args.func(args, config) or 0)
+    code = int(args.func(args, config) or 0)
+    try:
+        from . import serve
+
+        serve.autoserve_after(args.command)  # keep the review page up (PBRAIN_AUTOSERVE=0: off)
+    except Exception:  # noqa: BLE001 - never turn a finished command into a failure
+        pass
+    return code
 
 
 if __name__ == "__main__":

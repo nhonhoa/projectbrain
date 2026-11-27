@@ -11,7 +11,8 @@ It follows the "LLM wiki" idea: raw sources stay untouched, the agent writes and
 wiki, and a schema fixes its structure. In a software project the source code is one of the raw
 sources.
 
-- Python 3.11+, standard library only. No API key, no database, no service to run. (`pbrain review` is an optional local web page you start when you want it.)
+- Python 3.11+, standard library only. No API key, no database, no external service. The review
+  page is a small local server that pbrain starts by itself (see "Review page").
 - The tool is public; your knowledge stays in your own repositories.
 - Works for a single project. Several projects can share one knowledge repo.
 
@@ -32,7 +33,8 @@ that.
 ## Install
 
 ```
-pip install git+https://github.com/nhonhoa/projectbrain
+pip install git+https://github.com/nhonhoa/projectbrain   # or: uv tool install git+https://...
+pbrain setup           # once per machine: start the review page now and at every login
 cd your-project
 pbrain init            # on a terminal: wizard (detects the project, Enter accepts the defaults)
                        # elsewhere (CI, pipes): report only, changes nothing
@@ -43,6 +45,12 @@ pbrain init --rules CLAUDE.md
 
 Each `init` flag installs one level and can be used alone:
 `--config`, `--wiki`, `--hooks`, `--pre-commit`, `--rules FILE`.
+
+Once it's installed, the page runs: after `pbrain setup` the review page is at `http://127.0.0.1:8765/` and
+comes back at every login. `pbrain init` adds the project to the machine's project list
+(`~/.pbrain/projects.json`) and the page shows it on the next reload, without a restart. Skipped
+`setup`? Any pbrain command (`init`, the session-start hook, ...) starts the page when it is not
+running; `PBRAIN_AUTOSERVE=0` turns that off. Details: [docs/review-service.md](docs/review-service.md).
 
 To join a shared knowledge repo (see "Shared knowledge across projects"):
 
@@ -56,7 +64,8 @@ and uses its `SCHEMA.md` for the new wiki. Keys the project already sets are nev
 an existing `extends` line is left alone. It can be repeated. On a terminal, `init --config` or
 `--all` asks for a repo when the project has none (not in hooks or CI; `--no-extends` skips the
 question). It prints the line the owner of the shared repo adds to its `--roots-file` to include the
-project in `pbrain scan`; pbrain never edits another repository.
+project on other machines; on this one the registry already lists it. pbrain never edits another
+repository.
 
 ## Commands
 
@@ -66,8 +75,11 @@ pbrain check [files]             everything below, for changed files; exit 1 on 
 pbrain wiki lint                 structure, links, drift against code
 pbrain wiki touching <files>     wiki pages that cover these files
 pbrain wiki confirm <page>       mark a page as re-verified today
-pbrain review [ROOT ...]         local page to clear pending decisions with one click
-pbrain scan [ROOT ...]           report pending review items and what is new since the last scan
+pbrain setup [--uninstall]       start the review page now and at every login (once per machine)
+pbrain serve [--status|--stop]   the review page server (`setup` runs it in the background)
+pbrain projects [add|remove|prune] [ROOT]  the machine's project list shown on the page
+pbrain review [ROOT ...]         open the review page (reuses the running one)
+pbrain scan [ROOT ...] [--all]   report pending review items and what is new since the last scan
 pbrain cases record <file.json>  run the current code and store its outputs
 pbrain cases check               replay every case
 pbrain sync                      fetch the shared knowledge repos
@@ -75,8 +87,8 @@ pbrain sync                      fetch the shared knowledge repos
 
 ## Review page
 
-`pbrain review` starts a small web page on your machine (default `http://127.0.0.1:8765/`) that
-lists everything waiting for a human decision, so you do not edit front matter by hand:
+A small web page on your machine (`http://127.0.0.1:8765/`) lists everything waiting for a human
+decision, for every project registered on the machine, so you do not edit front matter by hand:
 
 - pages whose `trust` is `requested`: asked for but never confirmed (approve, edit, deprecate),
 - sections parked in `<wiki>/_inbox/*.md` (turn into a new page, append to a page, or discard),
@@ -92,9 +104,20 @@ The address bar always names what is open (`#<project>/<item>`), so you can past
 Keys: `j`/`k` move, `a` approve or confirm, `e` edit, `d` discard or deprecate, `?` help. A
 "changed files" button commits only the wiki directory. The page is local-only: it binds to
 127.0.0.1, checks the `Host` and `Origin` headers, requires a per-run token on every write, and
-never pushes. Several projects can be reviewed in one page: `pbrain review ../other-project`
-(each extra root needs a `pbrain.toml`). Options: `--port` (0 = any free port), `--host`,
-`--no-open`.
+never pushes.
+
+Which projects it shows: every project in `~/.pbrain/projects.json` (`pbrain init` and the
+session-start hook add theirs; `pbrain projects` lists and edits it), read again on each page load,
+plus roots given to `pbrain serve ROOT ...` / `--roots-file`. A project whose `pbrain.toml` is gone
+shows struck out until `pbrain projects prune`.
+
+Who runs it: `pbrain setup` installs a login autostart (Windows: the per-user `Run` registry key;
+macOS: a LaunchAgent; Linux: a systemd user unit or an XDG autostart entry) and starts a background
+`pbrain serve --daemon`. Only one runs per user (an OS lock on `~/.pbrain/serve.lock`); its log is
+`~/.pbrain/serve.log`; `pbrain serve --status` shows what serves the port. `pbrain review` opens the
+running page, or starts a foreground one when none runs (`--port 0` for any free port, `--host`,
+`--no-open`, `--no-registry`). See [docs/review-service.md](docs/review-service.md), which also
+covers running it under a process manager such as WebHost.
 
 ## Scheduled scan
 
@@ -104,16 +127,16 @@ it with the previous scan, then prints per project the totals by kind, the new i
 that are gone (`--json` for a machine-readable form). The result is stored in `--state`
 (default `~/.cache/pbrain/scan-state.json`); `pbrain review` reads the same file, shows
 "Last scan: ..." and marks new items. Exit code: 0 normally, 1 when a new lint error or drift
-appeared, 2 for a usage error. Projects come from arguments or `--roots-file` (one directory per
-line; blank lines and `#` comments are ignored, directories without `pbrain.toml` are skipped
-with a warning).
+appeared, 2 for a usage error. Projects come from arguments, `--all` (every project in the
+registry) or `--roots-file` (one directory per line; blank lines and `#` comments are ignored,
+directories without `pbrain.toml` are skipped with a warning).
 
 ```
 # Windows, every Monday 08:00
-schtasks /Create /SC WEEKLY /D MON /ST 08:00 /TN "pbrain scan" /TR "pbrain scan --roots-file C:\Tools\roots.txt"
+schtasks /Create /SC WEEKLY /D MON /ST 08:00 /TN "pbrain scan" /TR "pbrain scan --all"
 
 # cron
-0 8 * * 1  pbrain scan --roots-file ~/roots.txt
+0 8 * * 1  pbrain scan --all
 ```
 
 ## Configuration

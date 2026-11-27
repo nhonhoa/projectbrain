@@ -42,6 +42,7 @@ header {
 }
 .tabs, .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .tab, .chip { border-radius: 999px; padding: 3px 11px; background: transparent; }
+.tab.gone { opacity: .5; text-decoration: line-through; }
 .tab.on, .chip.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .spacer { flex: 1; }
 main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(260px, 380px) 1fr; }
@@ -161,7 +162,7 @@ const I18N = {
     name: "Name", title: "Title", type: "Type", trustL: "Trust", page: "Page", section: "Section",
     create: "Create", add: "Append", save: "Save", cancel: "Cancel", close: "Close",
     saved: "Saved", conflict: "The file changed on disk since you opened it. Cancel and reopen.",
-    sure: "Are you sure?", loading: "Loading...", error: "Error", noFiles: "No changed files.",
+    sure: "Are you sure?", noProjects: "No project yet. Run pbrain init in a project; it appears here.", tomlGone: "pbrain.toml is gone", loading: "Loading...", error: "Error", noFiles: "No changed files.",
     sKeys: "Keyboard shortcuts", kMove: "Next / previous item", kApprove: "Approve / confirm",
     kEdit: "Edit", kDel: "Discard / deprecate", kHelp: "This help", lang: "VI",
     covers: "Covers", inboxFrom: "Inbox file", pending: "pending", fail: "Request failed",
@@ -186,7 +187,7 @@ const I18N = {
     name: "Tên", title: "Tiêu đề", type: "Loại", trustL: "Độ tin cậy", page: "Trang", section: "Mục",
     create: "Tạo", add: "Gộp", save: "Lưu", cancel: "Hủy", close: "Đóng",
     saved: "Đã lưu", conflict: "File đã đổi trên đĩa kể từ khi bạn mở. Hãy hủy và mở lại.",
-    sure: "Bạn chắc chắn chứ?", loading: "Đang tải...", error: "Lỗi", noFiles: "Không có file thay đổi.",
+    sure: "Bạn chắc chắn chứ?", noProjects: "Chưa có dự án nào. Chạy pbrain init trong một dự án, nó sẽ hiện ở đây.", tomlGone: "mất pbrain.toml", loading: "Đang tải...", error: "Lỗi", noFiles: "Không có file thay đổi.",
     sKeys: "Phím tắt", kMove: "Mục kế / mục trước", kApprove: "Duyệt / xác nhận",
     kEdit: "Sửa", kDel: "Bỏ / ngừng dùng", kHelp: "Trợ giúp này", lang: "EN",
     covers: "Bao phủ", inboxFrom: "File hộp thư", pending: "đang chờ", fail: "Yêu cầu thất bại",
@@ -452,15 +453,35 @@ function selectFirstIfNone() {
   if (!list.find((x) => x.id === S.sel)) S.sel = list.length ? list[0].id : null;
   S.editing = S.panel = S.diff = S.note = null;
 }
+const usable = (p) => p && p.status === "ok";
 async function init() {
   const res = await api("/api/projects");
   S.projects = res.projects || [];
   S.scannedAt = res.scanned_at || "";
   S.want = readHash();
-  await loadProject(0);
-  for (let i = 1; i < S.projects.length; i++) await loadProject(i);
+  const first = S.projects.find(usable);
+  if (!first) { render(); return; }
+  S.cur = first.index;
+  await loadProject(S.cur);
+  for (const p of S.projects) if (usable(p) && p.index !== first.index) await loadProject(p.index);
   applyHash(true); render();
 }
+/* Projects registered (pbrain init) while the page is open appear when it regains focus. */
+async function refreshProjects() {
+  const res = await api("/api/projects");
+  if (!res.ok) return;
+  const had = S.projects.some(usable);
+  S.projects = res.projects || [];
+  S.scannedAt = res.scanned_at || S.scannedAt;
+  if (!usable(S.projects[S.cur])) {
+    const first = S.projects.find(usable);
+    S.cur = first ? first.index : 0; S.sel = null; S.kind = null;
+  }
+  for (const p of S.projects) if (usable(p) && !S.data[p.index]) await loadProject(p.index);
+  if (!had && usable(S.projects[S.cur])) selectFirstIfNone();
+  render();
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshProjects(); });
 window.addEventListener("popstate", () => window.dispatchEvent(new HashChangeEvent("hashchange")));
 window.addEventListener("hashchange", () => {
   const want = readHash();
@@ -474,7 +495,8 @@ function render() {
   document.documentElement.lang = lang;
   $("langBtn").textContent = t("lang");
   const d = proj();
-  $("tabs").innerHTML = S.projects.map((p) => {
+  $("tabs").innerHTML = S.projects.filter((p) => p.status !== "removed").map((p) => {
+    if (!usable(p)) return '<button class="tab gone" disabled title="' + esc(p.root + " — " + (p.error || t("tomlGone"))) + '">' + esc(p.name) + "</button>";
     const n = S.data[p.index] ? S.data[p.index].total : "…";
     return '<button class="tab' + (p.index === S.cur ? " on" : "") + '" data-tab="' + p.index + '" title="' + esc(p.root) + '">' + esc(p.name) + " " + n + "</button>";
   }).join("");
@@ -490,7 +512,7 @@ function render() {
 }
 function renderList() {
   const list = visible(), el = $("list");
-  if (!proj()) { el.innerHTML = '<div id="empty">' + t("loading") + "</div>"; return; }
+  if (!proj()) { el.innerHTML = '<div id="empty">' + t(S.projects.some(usable) ? "loading" : "noProjects") + "</div>"; return; }
   el.innerHTML = list.map((i) => {
     const cls = i.kind === "lint" ? i.severity : i.kind;
     const fresh = ((S.projects[S.cur] || {}).new || []).includes(i.id) ? '<span class="badge new">' + t("isNew") + "</span>" : "";

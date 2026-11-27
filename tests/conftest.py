@@ -66,6 +66,15 @@ def write(root, relative, text):
     return path
 
 
+@pytest.fixture(autouse=True)
+def pbrain_home(tmp_path_factory, monkeypatch):
+    """Each test gets its own ~/.pbrain and never starts the real review daemon."""
+    home = tmp_path_factory.mktemp("pbrain-home")
+    monkeypatch.setenv("PBRAIN_HOME", str(home))
+    monkeypatch.setenv("PBRAIN_AUTOSERVE", "0")
+    return home
+
+
 @pytest.fixture
 def helpers():
     class Helpers:

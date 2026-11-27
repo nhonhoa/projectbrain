@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import secrets
 import socket
@@ -632,8 +633,11 @@ def run_action(config, payload: dict) -> dict:
     return result
 
 
-def project_info(configs, state=None) -> list[dict]:
-    """Project list; ``state`` (from the last ``pbrain scan``) adds each project's new item ids."""
+def project_info(configs, state=None, extra=None) -> list[dict]:
+    """Project list; ``state`` (from the last ``pbrain scan``) adds each project's new item ids.
+
+    ``extra`` maps an index to fields merged into that entry (``ProjectSet`` adds its status).
+    """
     projects = (state or {}).get("projects", {})
     info = []
     for i, c in enumerate(configs):
@@ -646,9 +650,119 @@ def project_info(configs, state=None) -> list[dict]:
                 "root": str(c.root),
                 "wiki": c.wiki.dir,
                 "new": [n for n in new if isinstance(n, str)],
+                "status": "ok",
+                **(extra or {}).get(i, {}),
             }
         )
     return info
+
+
+class _Gone:
+    """Stand-in for a project that cannot be loaded (only what ``project_info`` reads)."""
+
+    def __init__(self, root):
+        self.root = Path(root)
+        self.project = self.root.name
+        self.wiki = config_module.WikiConfig(dir="")
+
+
+class ProjectSet:
+    """The projects one review page serves: fixed roots plus, optionally, the registry.
+
+    The registry is read again on every project list request, so ``pbrain init`` in a new project
+    shows up without a restart. Slots are append-only: an index the page already holds keeps
+    naming the same project while the server runs. A project that loses its ``pbrain.toml``
+    turns ``missing``; one taken out of the registry turns ``removed`` (the page hides it).
+    """
+
+    def __init__(self, configs=(), use_registry=False, registry_file=None):
+        self.lock = threading.RLock()
+        self.use_registry = use_registry
+        self.registry_file = registry_file
+        self.slots: list[dict] = []
+        for config in configs:
+            self._slot(config.root, "fixed", config)
+        self.refresh()
+
+    def _slot(self, root, origin, config=None):
+        from . import registry
+
+        key = registry.key(root)
+        slot = next((s for s in self.slots if s["key"] == key), None)
+        if slot is None:
+            toml = Path(root) / config_module.CONFIG_NAME
+            slot = {"key": key, "root": Path(root), "origin": origin, "config": config,
+                    "mtime": None, "status": "ok", "error": ""}
+            if config is not None and toml.is_file():
+                slot["mtime"] = toml.stat().st_mtime
+            self.slots.append(slot)
+        return slot
+
+    def _check(self, slot):
+        try:
+            mtime = (slot["root"] / config_module.CONFIG_NAME).stat().st_mtime
+        except OSError:
+            mtime = None
+        if mtime is None:
+            # A fixed project given without a pbrain.toml (defaults) stays; any other is missing.
+            if not (slot["origin"] == "fixed" and slot["mtime"] is None and slot["config"]):
+                slot["status"] = "missing"
+            return
+        if slot["config"] is not None and slot["mtime"] == mtime and slot["status"] == "ok":
+            return
+        try:
+            slot["config"] = config_module.load(slot["root"])
+            slot["status"], slot["error"] = "ok", ""
+        except (OSError, ValueError) as error:
+            slot["status"], slot["error"] = "error", f"{config_module.CONFIG_NAME}: {error}"
+        slot["mtime"] = mtime
+
+    def refresh(self):
+        from . import registry
+
+        with self.lock:
+            listed = set()
+            if self.use_registry:
+                for entry in registry.load(self.registry_file):
+                    listed.add(self._slot(entry["root"], "registry")["key"])
+            for slot in self.slots:
+                if slot["origin"] == "registry" and slot["key"] not in listed:
+                    slot["status"] = "removed"
+                    continue
+                if slot["status"] == "removed":
+                    slot["status"] = "ok"
+                self._check(slot)
+
+    def live(self) -> list:
+        """Configs that can be served now (for cross-project source lookups)."""
+        with self.lock:
+            return [s["config"] for s in self.slots if s["status"] == "ok" and s["config"]]
+
+    def get(self, index):
+        with self.lock:
+            try:
+                index = int(index)
+                if index < 0:
+                    raise IndexError(index)
+                slot = self.slots[index]
+            except (ValueError, TypeError, IndexError):
+                raise ReviewError("unknown project", 404) from None
+            if slot["status"] != "ok" or slot["config"] is None:
+                message = slot["error"] or f"project is {slot['status']}: {slot['root']}"
+                raise ReviewError(message, 410)
+            return slot["config"]
+
+    def info(self, state=None) -> list[dict]:
+        with self.lock:
+            self.refresh()
+            configs, extra = [], {}
+            for i, slot in enumerate(self.slots):
+                usable = slot["status"] == "ok" and slot["config"] is not None
+                configs.append(slot["config"] if usable else _Gone(slot["root"]))
+                extra[i] = {"status": slot["status"], "origin": slot["origin"]}
+                if slot["error"]:
+                    extra[i]["error"] = slot["error"]
+            return project_info(configs, state, extra)
 
 
 def scan_state(path=None) -> dict:
@@ -711,13 +825,24 @@ def _template() -> str:
 
 class ReviewServer(ThreadingHTTPServer):
     daemon_threads = True
+    # On Windows SO_REUSEADDR lets a second server bind a port that is in use, so two review
+    # pages would share 8765 at random. Bind exclusively there instead.
+    allow_reuse_address = os.name != "nt"
 
-    def __init__(self, address, configs, token=None, state_path=None):
+    def server_bind(self):
+        if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+    def __init__(
+        self, address, configs, token=None, state_path=None, use_registry=False,
+        registry_file=None,
+    ):
         host = address[0]
         if ":" in host:
             self.address_family = socket.AF_INET6
         super().__init__(address, ReviewHandler)
-        self.configs = list(configs)
+        self.projects = ProjectSet(configs, use_registry, registry_file)
         self.state_path = state_path
         self.token = token or secrets.token_urlsafe(24)
         self.lock = threading.Lock()
@@ -753,10 +878,14 @@ class ReviewHandler(BaseHTTPRequestHandler):
         return (self.headers.get("Host") or "").lower() in self.server.allowed_hosts
 
     def _config(self, query):
+        index = query.get("project", ["0"])[0]
         try:
-            return self.server.configs[int(query.get("project", ["0"])[0])]
-        except (ValueError, IndexError):
-            raise ReviewError("unknown project", 404) from None
+            return self.server.projects.get(index)
+        except ReviewError as error:
+            if error.status != 404:
+                raise
+        self.server.projects.refresh()  # registered since the page last listed projects?
+        return self.server.projects.get(index)
 
     def _guard(self, handler):
         try:
@@ -781,13 +910,20 @@ class ReviewHandler(BaseHTTPRequestHandler):
             return self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
         if route == "/favicon.ico":
             return self._send(204, b"", "image/x-icon")
+        if route == "/api/health":
+            from . import __version__
+
+            return self._json(200, {
+                "ok": True, "app": "pbrain", "version": __version__, "pid": os.getpid(),
+                "registry": self.server.projects.use_registry,
+            })
         if route == "/api/projects":
             state = scan_state(self.server.state_path)
             return self._json(
                 200,
                 {
                     "ok": True,
-                    "projects": project_info(self.server.configs, state),
+                    "projects": self.server.projects.info(state),
                     "scanned_at": state.get("scanned_at") or "",
                 },
             )
@@ -800,7 +936,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, **read_page(config, page)})
         if route == "/api/source":
             ref = (query.get("ref") or [""])[0]
-            found = read_source(self.server.configs, config, ref)
+            found = read_source(self.server.projects.live(), config, ref)
             return self._json(200, {"ok": True, **found})
         if route == "/api/diff":
             return self._json(200, {"ok": True, "diff": page_diff(config, page)})
@@ -833,10 +969,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             raise ReviewError("body is not valid JSON") from None
         if not isinstance(payload, dict):
             raise ReviewError("body must be a JSON object")
-        try:
-            config = self.server.configs[int(payload.get("project", 0))]
-        except (ValueError, TypeError, IndexError):
-            raise ReviewError("unknown project", 404) from None
+        config = self._config({"project": [payload.get("project", 0)]})
         with self.server.lock:
             result = run_action(config, payload)
         self._json(200 if result.get("ok") else 422, result)
@@ -864,19 +997,37 @@ def load_projects(config, extra_roots):
 def _command(args, config) -> int:
     import sys
 
+    from . import registry, serve
+
     try:
         configs = load_projects(config, args.roots)
     except (OSError, ValueError) as error:
         print(f"pbrain review: {error}", file=sys.stderr)
         return 2
+    if args.port:
+        running = serve.probe(args.port, args.host)
+        if running and running.get("app") == "pbrain" and running.get("registry"):
+            # The machine's page is up: list these projects there instead of a second server.
+            for item in configs:
+                if registry.has_config(item.root):
+                    registry.add(item.root, item.project)
+            url = serve.url(args.port, args.host)
+            print(f"pbrain review: {url} is already running; the project(s) are listed there.")
+            if not args.no_open:
+                webbrowser.open(url)
+            return 0
     try:
-        server = ReviewServer((args.host, args.port), configs, state_path=args.state)
+        server = ReviewServer(
+            (args.host, args.port), configs, state_path=args.state,
+            use_registry=not args.no_registry,
+        )
     except OSError as error:
         print(f"pbrain review: cannot listen on {args.host}:{args.port}: {error}", file=sys.stderr)
         return 2
     host = f"[{args.host}]" if ":" in args.host else args.host
     url = f"http://{host}:{server.server_address[1]}/"
-    print(f"pbrain review: {url}  ({len(configs)} project(s)). Ctrl+C to stop.", flush=True)
+    count = len(server.projects.info())
+    print(f"pbrain review: {url}  ({count} project(s)). Ctrl+C to stop.", flush=True)
     if not args.no_open:
         webbrowser.open(url)
     try:
@@ -897,4 +1048,7 @@ def add_parser(subparsers):
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--no-open", action="store_true", help="Do not open the browser.")
     parser.add_argument("--state", help="Scan state file (default as `pbrain scan`).")
+    parser.add_argument(
+        "--no-registry", action="store_true", help="Only these roots, not the registered projects."
+    )
     parser.set_defaults(func=_command)
