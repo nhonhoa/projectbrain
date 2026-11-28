@@ -41,30 +41,52 @@ def in_scope(config: Config, rel: str) -> bool:
     return rel != reuse.catalog.replace("\\", "/")
 
 
+_WRITE_TOOLS = frozenset({"Write", "write_file", "write_to_file"})
+_EDIT_TOOLS = frozenset({"Edit", "edit_file", "replace_file_content"})
+_MULTI_EDIT_TOOLS = frozenset({"MultiEdit", "multi_replace_file_content"})
+
+
+def _first(mapping: dict, *keys: str) -> str:
+    for key in keys:
+        value = mapping.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
 def _changes(config: Config, tool_name, tool_input, rel):
     """List of ``(old content, new content)`` pairs that this write produces."""
-    if tool_name == "Write":
+    if tool_name in _WRITE_TOOLS:
         old = ""
         path = config.root / rel
         if path.is_file():
             old = path.read_text(encoding="utf-8", errors="replace")
-        return [(old, tool_input.get("content") or "")]
-    if tool_name == "Edit":
-        return [(tool_input.get("old_string") or "", tool_input.get("new_string") or "")]
-    if tool_name == "MultiEdit":
+        return [(old, _first(tool_input, "content", "Content", "CodeContent"))]
+    if tool_name in _EDIT_TOOLS:
         return [
-            (edit.get("old_string") or "", edit.get("new_string") or "")
-            for edit in tool_input.get("edits") or []
+            (
+                _first(tool_input, "old_string", "Target", "TargetContent"),
+                _first(tool_input, "new_string", "Replacement", "ReplacementContent"),
+            )
+        ]
+    if tool_name in _MULTI_EDIT_TOOLS:
+        edits = tool_input.get("edits") or tool_input.get("ReplacementChunks") or []
+        return [
+            (
+                _first(edit, "old_string", "TargetContent"),
+                _first(edit, "new_string", "ReplacementContent"),
+            )
+            for edit in edits
         ]
     return []
 
 
 def check_edit(config: Config, tool_name: str, tool_input: dict | None) -> list[str]:
     """Human-readable violations for one tool call; an empty list means the edit is fine."""
-    if tool_name not in ("Write", "Edit", "MultiEdit"):
+    if tool_name not in (_WRITE_TOOLS | _EDIT_TOOLS | _MULTI_EDIT_TOOLS):
         return []
     tool_input = tool_input or {}
-    rel = relative_path(config, tool_input.get("file_path") or "")
+    rel = relative_path(config, _first(tool_input, "file_path", "Path", "TargetFile"))
     if not rel or not in_scope(config, rel):
         return []
     catalog = load_catalog(config)

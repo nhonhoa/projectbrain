@@ -327,3 +327,21 @@ def test_wizard_custom_roots(tmp_path, run_cli, helpers, monkeypatch):
     monkeypatch.setattr("builtins.input", lambda *_: next(answers))
     run_cli("--root", tmp_path, "init")
     assert 'roots = ["app", "lib"]' in (tmp_path / "pbrain.toml").read_text(encoding="utf-8")
+
+
+def test_hooks_installs_agy_hooks_and_preserves_existing(tmp_path, run_cli):
+    hooks_path = tmp_path / ".agents/hooks.json"
+    hooks_path.parent.mkdir(parents=True)
+    hooks_path.write_text(json.dumps({"other-hook": {"SessionStart": []}}), encoding="utf-8")
+    code, _, _ = run_cli("--root", tmp_path, "init", "--hooks")
+    assert code == 0
+    assert (tmp_path / ".agents/hooks/pbrain_run.py").is_file()
+    data = json.loads(hooks_path.read_text(encoding="utf-8"))
+    assert "other-hook" in data
+    assert set(data["pbrain"]) == {"PreToolUse", "SessionStart", "Stop"}
+    assert "write_file" in data["pbrain"]["PreToolUse"][0]["matcher"]
+
+
+def test_detect_finds_gemini_md(tmp_path):
+    (tmp_path / "GEMINI.md").write_text("# Rules\n", encoding="utf-8")
+    assert init.detect(tmp_path)["rules"] == "GEMINI.md"

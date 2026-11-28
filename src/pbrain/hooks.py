@@ -34,8 +34,24 @@ def _payload() -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _is_agy(payload: dict) -> bool:
+    """True when the hook payload uses Antigravity (agy) camelCase format."""
+    return "hookEventName" in payload or "toolCall" in payload or "conversationId" in payload
+
+
 def pre_tool_use(config, payload: dict) -> int:
     from .reuse import guard
+
+    if _is_agy(payload):
+        tool_call = payload.get("toolCall") or {}
+        violations = guard.check_edit(config, tool_call.get("name"), tool_call.get("args") or {})
+        reply = (
+            {"decision": "deny", "reason": "\n".join(violations)}
+            if violations
+            else {"decision": "allow"}
+        )
+        print(json.dumps(reply, ensure_ascii=False))
+        return 0
 
     violations = guard.check_edit(config, payload.get("tool_name"), payload.get("tool_input") or {})
     if not violations:
@@ -77,29 +93,52 @@ def session_start(config, payload: dict) -> int:
         if flagged:
             shown = ", ".join(flagged[:MAX_LISTED]) + (" ..." if len(flagged) > MAX_LISTED else "")
             lines.append(f"Wiki pages needing review ({len(flagged)}): {shown}")
+    if _is_agy(payload):
+        reply = (
+            {"injectSteps": [{"systemMessage": {"systemMessage": "\n".join(lines)}}]}
+            if lines
+            else {}
+        )
+        print(json.dumps(reply, ensure_ascii=False))
+        return 0
     if lines:
         print("\n".join(lines))
     return 0
 
 
 def _state_file(config, payload: dict) -> Path:
-    session = "".join(
-        c for c in str(payload.get("session_id") or "default") if c.isalnum() or c in "-_"
-    )
+    raw_id = payload.get("session_id") or payload.get("conversationId") or "default"
+    session = "".join(c for c in str(raw_id) if c.isalnum() or c in "-_")
     return config.root / STATE_DIR / f"{session or 'default'}.json"
 
 
 def stop(config, payload: dict) -> int:
     from . import wiki
 
-    if payload.get("stop_hook_active") or not config.wiki_dir.is_dir():
+    agy = _is_agy(payload)
+
+    def _silent() -> int:
+        if agy:
+            print("{}")
         return 0
+
+    if agy:
+        if payload.get("continuationActive") or payload.get("terminationReason") in (
+            "USER_CANCELED",
+            "ERROR",
+        ):
+            return _silent()
+    elif payload.get("stop_hook_active"):
+        return 0
+
+    if not config.wiki_dir.is_dir():
+        return _silent()
     changed = changed_files(config.root)
     if not changed:
-        return 0
+        return _silent()
     drifting = [page for page in wiki.pages_covering(config, changed) if page.get("drift")]
     if not drifting:
-        return 0
+        return _silent()
     state_file = _state_file(config, payload)
     try:
         reminded = set(json.loads(state_file.read_text(encoding="utf-8")))
@@ -107,7 +146,7 @@ def stop(config, payload: dict) -> int:
         reminded = set()
     fresh = [page for page in drifting if page["page"] not in reminded]
     if not fresh:
-        return 0
+        return _silent()
     try:
         state_file.parent.mkdir(parents=True, exist_ok=True)
         state_file.write_text(
@@ -128,7 +167,8 @@ def stop(config, payload: dict) -> int:
         "Code now differs from the intent -> record it under the page's gaps section and tell the "
         "user. If the change is not yours, say so and carry on.",
     ]
-    print(json.dumps({"decision": "block", "reason": "\n".join(lines)}, ensure_ascii=False))
+    decision = "continue" if agy else "block"
+    print(json.dumps({"decision": decision, "reason": "\n".join(lines)}, ensure_ascii=False))
     return 0
 
 

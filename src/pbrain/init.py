@@ -34,16 +34,33 @@ from .config import CONFIG_NAME, WikiConfig
 
 RUNNER = ".claude/hooks/pbrain_run.py"
 SETTINGS = ".claude/settings.json"
+AGY_RUNNER = ".agents/hooks/pbrain_run.py"
+AGY_HOOKS = ".agents/hooks.json"
 MARK_START = "<!-- pbrain:start -->"
 MARK_END = "<!-- pbrain:end -->"
 HOOK_START = "# >>> pbrain >>>"
 HOOK_END = "# <<< pbrain <<<"
 RUN = 'python "$CLAUDE_PROJECT_DIR"/' + RUNNER
+AGY_RUN = "python hooks/pbrain_run.py"
+AGY_PRE_TOOL_MATCHER = (
+    "write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content"
+)
 
 HOOKS = {
     "PreToolUse": {"matcher": "Write|Edit|MultiEdit", "command": f"{RUN} hook pre-tool-use"},
     "SessionStart": {"matcher": "", "command": f"{RUN} hook session-start"},
     "Stop": {"matcher": "", "command": f"{RUN} hook stop"},
+}
+
+AGY_HOOKS_SPEC = {
+    "PreToolUse": [
+        {
+            "matcher": AGY_PRE_TOOL_MATCHER,
+            "hooks": [{"type": "command", "command": f"{AGY_RUN} hook pre-tool-use"}],
+        }
+    ],
+    "SessionStart": [{"type": "command", "command": f"{AGY_RUN} hook session-start"}],
+    "Stop": [{"type": "command", "command": f"{AGY_RUN} hook stop"}],
 }
 
 PRE_COMMIT_BLOCK = f"""{HOOK_START}
@@ -88,8 +105,11 @@ def report(config) -> list[str]:
         (config.cases.dir, "behavior cases"),
         (RUNNER, "hook runner"),
         (SETTINGS, "Claude Code settings"),
+        (AGY_RUNNER, "agy hook runner"),
+        (AGY_HOOKS, "Antigravity (agy) hooks"),
         ("CLAUDE.md", "agent rules file"),
         ("AGENTS.md", "agent rules file"),
+        ("GEMINI.md", "agent rules file"),
         ("docs", "existing docs (source to ingest)"),
         ("conductor", "conductor tracks (source to ingest)"),
         (".git/hooks/pre-commit", "git pre-commit hook"),
@@ -300,7 +320,10 @@ def detect(root: Path) -> dict:
             if not grandchild.name.startswith(".")
         ):
             roots.append(name)
-    rules = next((n for n in ("CLAUDE.md", "AGENTS.md") if (root / n).exists()), "CLAUDE.md")
+    rules = next(
+        (n for n in ("CLAUDE.md", "AGENTS.md", "GEMINI.md") if (root / n).exists()),
+        "CLAUDE.md",
+    )
     return {
         "roots": roots,
         "rules": rules,
@@ -340,7 +363,7 @@ def _wizard(config, assume_yes: bool, no_extends: bool):
             choice["roots"] = [part.strip() for part in answer.split(",") if part.strip()]
     choice["wiki"] = _ask(f"Create the wiki skeleton ({config.wiki.dir}/)?")
     choice["hooks"] = _ask(
-        "Install Claude Code hooks (.claude/)? They remind the agent to read the "
+        "Install agent hooks (.claude/ and .agents/)? They remind the agent to read the "
         "wiki and run `pbrain check`."
     )
     if facts["git"]:
@@ -358,12 +381,11 @@ def _wizard(config, assume_yes: bool, no_extends: bool):
     return choice
 
 
-def install_hooks(config) -> list[str]:
+def _install_claude_hooks(config, runner_text: str) -> list[str]:
     done = []
     runner = config.root / RUNNER
-    text = _template("pbrain_run.py")
-    if not runner.exists() or runner.read_text(encoding="utf-8") != text:
-        _write(runner, text)
+    if not runner.exists() or runner.read_text(encoding="utf-8") != runner_text:
+        _write(runner, runner_text)
         done.append(f"wrote    {RUNNER}")
     settings_path = config.root / SETTINGS
     try:
@@ -388,6 +410,31 @@ def install_hooks(config) -> list[str]:
         _write(settings_path, json.dumps(settings, ensure_ascii=False, indent=2) + "\n")
         done.append(f"updated  {SETTINGS}")
     return done or [f"kept     {SETTINGS}"]
+
+
+def _install_agy_hooks(config, runner_text: str) -> list[str]:
+    done = []
+    runner = config.root / AGY_RUNNER
+    if not runner.exists() or runner.read_text(encoding="utf-8") != runner_text:
+        _write(runner, runner_text)
+        done.append(f"wrote    {AGY_RUNNER}")
+    hooks_path = config.root / AGY_HOOKS
+    try:
+        hooks = json.loads(hooks_path.read_text(encoding="utf-8")) if hooks_path.exists() else {}
+    except ValueError:
+        return [*done, f"skipped  {AGY_HOOKS}: not valid JSON, register the hooks by hand"]
+    if not isinstance(hooks, dict):
+        return [*done, f"skipped  {AGY_HOOKS}: expected a JSON object, register the hooks by hand"]
+    if hooks.get("pbrain") != AGY_HOOKS_SPEC:
+        hooks["pbrain"] = AGY_HOOKS_SPEC
+        _write(hooks_path, json.dumps(hooks, ensure_ascii=False, indent=2) + "\n")
+        done.append(f"updated  {AGY_HOOKS}")
+    return done or [f"kept     {AGY_HOOKS}"]
+
+
+def install_hooks(config) -> list[str]:
+    runner_text = _template("pbrain_run.py")
+    return _install_claude_hooks(config, runner_text) + _install_agy_hooks(config, runner_text)
 
 
 def install_pre_commit(config) -> str:
@@ -508,7 +555,9 @@ def add_parser(subparsers) -> None:
     parser = subparsers.add_parser("init", help="Report on, then install pbrain into a project.")
     parser.add_argument("--config", action="store_true", help=f"Write {CONFIG_NAME} if missing.")
     parser.add_argument("--wiki", action="store_true", help="Create the wiki skeleton.")
-    parser.add_argument("--hooks", action="store_true", help="Install the Claude Code hooks.")
+    parser.add_argument(
+        "--hooks", action="store_true", help="Install the Claude Code and Antigravity (agy) hooks."
+    )
     parser.add_argument("--pre-commit", action="store_true", help="Add pbrain to git pre-commit.")
     parser.add_argument(
         "--rules", metavar="FILE", help="Write agent rules into FILE between markers."

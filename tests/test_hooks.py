@@ -96,3 +96,73 @@ def test_unknown_event_is_rejected_by_argparse(project, run_cli):
     with pytest.raises(SystemExit) as info:
         run_cli("--root", project, "hook", "nope")
     assert info.value.code == 2
+
+
+def _agy_tool_payload(name, args):
+    return {
+        "hookEventName": "PreToolUse",
+        "conversationId": "conv-1",
+        "toolCall": {"id": "t1", "name": name, "args": args},
+    }
+
+
+def test_agy_pre_tool_use_denies_write_file_and_edit_file(guarded, run_cli, stdin, bad_js):
+    payload = _agy_tool_payload("write_file", {"Path": "src/n.js", "Content": bad_js})
+    code, out, err = hook(run_cli, stdin, guarded, "pre-tool-use", payload)
+    assert code == 0 and err == ""
+    reply = json.loads(out)
+    assert reply["decision"] == "deny"
+    assert "Notify" in reply["reason"]
+
+    edit_payload = _agy_tool_payload(
+        "edit_file", {"Path": "src/n.js", "Target": "x", "Replacement": bad_js}
+    )
+    code, out, _ = hook(run_cli, stdin, guarded, "pre-tool-use", edit_payload)
+    assert code == 0
+    assert json.loads(out)["decision"] == "deny"
+
+
+def test_agy_pre_tool_use_allows_clean_edit(guarded, run_cli, stdin):
+    payload = _agy_tool_payload("write_file", {"Path": "src/n.js", "Content": "const x = 1;\n"})
+    code, out, err = hook(run_cli, stdin, guarded, "pre-tool-use", payload)
+    assert code == 0 and err == ""
+    assert json.loads(out) == {"decision": "allow"}
+
+
+def test_agy_session_start_outputs_inject_steps(drift, run_cli, stdin):
+    payload = {"hookEventName": "SessionStart", "conversationId": "conv-1"}
+    code, out, _ = hook(run_cli, stdin, drift, "session-start", payload)
+    assert code == 0
+    reply = json.loads(out)
+    msg = reply["injectSteps"][0]["systemMessage"]["systemMessage"]
+    assert "Project wiki" in msg and "totals.md" in msg
+
+
+def test_agy_session_start_without_wiki_outputs_empty_json(tmp_path, run_cli, stdin):
+    payload = {"hookEventName": "SessionStart", "conversationId": "conv-1"}
+    code, out, _ = hook(run_cli, stdin, tmp_path, "session-start", payload)
+    assert code == 0
+    assert json.loads(out) == {}
+
+
+def test_agy_stop_continues_once_per_conversation(drift, run_cli, stdin):
+    payload = {"hookEventName": "Stop", "conversationId": "conv-1"}
+    code, out, _ = hook(run_cli, stdin, drift, "stop", payload)
+    assert code == 0
+    reply = json.loads(out)
+    assert reply["decision"] == "continue"
+    assert "totals.md" in reply["reason"]
+
+    code, out, _ = hook(run_cli, stdin, drift, "stop", payload)
+    assert code == 0
+    assert json.loads(out) == {}
+
+    code, out, _ = hook(
+        run_cli,
+        stdin,
+        drift,
+        "stop",
+        {"hookEventName": "Stop", "conversationId": "conv-2", "continuationActive": True},
+    )
+    assert code == 0
+    assert json.loads(out) == {}
